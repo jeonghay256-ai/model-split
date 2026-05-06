@@ -1,7 +1,7 @@
 import { callAuxModel, resetAuxCallState } from './modules/aux-caller.js';
 import { buildAuxPrompt } from './modules/prompt-builder.js';
 import { getDh29Preset } from './modules/preset-manager.js';
-import { composeMessageWithStatus, extractTagBlock, hasTagBlock } from './modules/tag-assembler.js';
+import { composeMessageWithStatus, extractTagBlock, hasTagBlock, removeTagBlock } from './modules/tag-assembler.js';
 import { getSettings, initSettings, renderSettings } from './modules/settings.js';
 import { debugLog, getContext, notifyError, notifyWarning, setLastCallMetadata } from './modules/utils.js';
 import { injectStatusBlocker } from './modules/interceptor.js';
@@ -53,27 +53,16 @@ async function handleMessageReceived(eventData) {
     }
 
     const preset = getDh29Preset();
-    if (hasTagBlock(message.mes, preset.tagName)) {
-        debugLog(settings, 'Main response already contains status tag; aux call skipped');
-        await setLastCallMetadata({
-            input: null,
-            output: null,
-            error: null,
-            skipped: true,
-            skipReason: 'main_had_blocked_tag',
-            messageId,
-            mainBeforeCompose: message.mes,
-            mainHadBlockedTag: true,
-            auxStatusBlock: null,
-            finalMessagePreview: message.mes.slice(0, 1000),
-        });
-        return;
+    const mainBeforeCompose = message.mes;
+    const mainHadBlockedTag = hasTagBlock(mainBeforeCompose, preset.tagName);
+    const strippedMain = removeTagBlock(mainBeforeCompose, preset.tagName);
+    if (mainHadBlockedTag) {
+        debugLog(settings, 'Main response already contains status tag; will replace it if aux succeeds');
     }
 
     try {
-        const mainBeforeCompose = message.mes;
         const prompts = buildAuxPrompt({
-            mainResponse: mainBeforeCompose,
+            mainResponse: strippedMain.text,
             context,
             settings,
             preset,
@@ -83,25 +72,28 @@ async function handleMessageReceived(eventData) {
         const raw = await callAuxModel(prompts, settings);
         const statusBlock = extractTagBlock(raw, preset.tagName);
 
-        message.mes = composeMessageWithStatus(mainBeforeCompose, statusBlock);
+        message.mes = composeMessageWithStatus(strippedMain.text, statusBlock);
         settings.lastAuxOutput = raw;
         context?.saveSettingsDebounced?.();
         await setLastCallMetadata({
             input: {
                 ...prompts,
                 mainResponse: mainBeforeCompose,
+                strippedMainResponse: strippedMain.text,
             },
             output: raw,
             error: null,
             skipped: false,
             messageId,
             mainBeforeCompose,
-            mainHadBlockedTag: false,
+            mainHadBlockedTag,
+            removedMainStatusBlock: strippedMain.removed,
             auxStatusBlock: statusBlock,
+            replacementMode: mainHadBlockedTag ? 'replace_main_status' : 'prepend_aux_status',
             finalMessagePreview: message.mes.slice(0, 1000),
         });
 
-        debugLog(settings, `Status tag prepended; messageId=${messageId}, statusLength=${statusBlock.length}`);
+        debugLog(settings, `Status tag composed; mode=${mainHadBlockedTag ? 'replace' : 'prepend'}, messageId=${messageId}, statusLength=${statusBlock.length}`);
     } catch (error) {
         console.error('[AuxSplit] Aux processing failed', error);
         await setLastCallMetadata({
@@ -110,10 +102,12 @@ async function handleMessageReceived(eventData) {
             error: String(error?.message ?? error),
             skipped: false,
             messageId,
-            mainBeforeCompose: message?.mes ?? '',
-            mainHadBlockedTag: hasTagBlock(message?.mes ?? '', preset.tagName),
+            mainBeforeCompose,
+            mainHadBlockedTag,
+            removedMainStatusBlock: null,
             auxStatusBlock: null,
-            finalMessagePreview: message?.mes?.slice?.(0, 1000) ?? '',
+            replacementMode: 'fallback_original_main',
+            finalMessagePreview: mainBeforeCompose.slice(0, 1000),
         });
 
         if (!settings.silentFallback) {

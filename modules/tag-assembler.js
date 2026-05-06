@@ -28,6 +28,31 @@ export function extractTagBlock(text, tagName) {
     return match[0].trim();
 }
 
+export function removeTagBlock(text, tagName) {
+    if (typeof text !== 'string') {
+        return {
+            text: '',
+            removed: null,
+        };
+    }
+
+    const escaped = escapeRegExp(tagName);
+    const pattern = new RegExp(`<${escaped}(\\s[^>]*)?>[\\s\\S]*?<\\/${escaped}>`, 'i');
+    const match = text.match(pattern);
+
+    if (!match?.[0]) {
+        return {
+            text,
+            removed: null,
+        };
+    }
+
+    return {
+        text: text.replace(pattern, '').trimStart(),
+        removed: match[0].trim(),
+    };
+}
+
 export function composeMessageWithStatus(mainMessage, statusBlock) {
     const body = String(mainMessage ?? '').trimStart();
     const status = String(statusBlock ?? '').trim();
