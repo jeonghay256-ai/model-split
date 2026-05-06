@@ -1,3 +1,5 @@
+import { applyTemplate } from './preset-manager.js';
+
 function getCharacterName(context) {
     const characterId = context?.characterId;
     const characters = context?.characters;
@@ -28,36 +30,16 @@ function formatRecentContext(context, turns) {
 export function buildAuxPrompt({ mainResponse, context, settings, preset }) {
     const charName = getCharacterName(context);
     const userName = getUserName(context);
-    const recentContext = formatRecentContext(context, settings.contextTurns);
-
-    const systemPrompt = [
-        `You generate only the DH-29 status block for ${charName}.`,
-        `Return exactly one <${preset.tagName}>...</${preset.tagName}> block.`,
-        'Do not include roleplay prose, markdown fences, explanations, JSON, or image tags.',
-        'Use this exact field order: Day, 기분, 생각, 위치, 행동.',
-        '기분 must be one of: 보통, 미소, 분노, 슬픔, 눈물, 짜증, 한심, 동요, 기쁨.',
-        'If the story implies character sacrifice or missing data, use 데이터 없음 for 기분 and 생각.',
-    ].join('\n');
-
-    const userPrompt = [
-        `Character: ${charName}`,
-        `User: ${userName}`,
-        '',
-        'Recent context:',
-        recentContext || '(none)',
-        '',
-        'Main response without status block:',
+    const recentContext = formatRecentContext(context, settings.contextTurns) || '(none)';
+    const variables = {
         mainResponse,
-        '',
-        `Now output only the <${preset.tagName}> block in this shape:`,
-        `<${preset.tagName}>`,
-        'Day: D-15',
-        '기분: 보통',
-        '생각: 시스템 최적화 분석 중.',
-        '위치: 제어실',
-        '행동: 모니터 확인',
-        `</${preset.tagName}>`,
-    ].join('\n');
+        recentContext,
+        charName,
+        userName,
+        tagName: preset.tagName,
+    };
+    const systemPrompt = applyTemplate(preset.auxSystemPrompt, variables);
+    const userPrompt = applyTemplate(preset.auxUserPromptTemplate, variables);
 
     return { systemPrompt, userPrompt };
 }

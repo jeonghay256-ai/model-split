@@ -26,8 +26,20 @@ The final output stays inside the normal SillyTavern chat message so existing bo
 This is a DH-29 MVP.
 
 - Supported: `<상태창>` generation only
+- Supported: editable auxiliary output prompts in the extension settings UI
 - Not yet supported: preset editor, choices, JSONPatch, multi-output routing, community preset import/export
 - Not modified: bot-card regex scripts, character-assets, QR-triggered tags
+
+## Recommended Workflow
+
+To reduce the main model's status-output workload:
+
+1. Disable or remove the status header instruction from the bot card, World Info, or author's note.
+2. Paste that status-header instruction into Aux Model Split's auxiliary output prompt field.
+3. Keep the bot card's regex scripts unchanged.
+4. Let the main model generate roleplay prose while the auxiliary model generates the structured tag block.
+
+The extension then composes the auxiliary status block back into the normal chat message so the original SillyTavern regex UI still renders.
 
 ## Installation
 

@@ -1,4 +1,9 @@
-import { getDh29Preset } from './preset-manager.js';
+import {
+    DEFAULT_AUX_SYSTEM_PROMPT,
+    DEFAULT_AUX_USER_PROMPT_TEMPLATE,
+    DEFAULT_MAIN_BLOCKER_PROMPT,
+    getDh29Preset,
+} from './preset-manager.js';
 import { debugLog, escapeHtml, getContext, notifyInfo } from './utils.js';
 
 export const MODULE_NAME = 'aux_model_split';
@@ -8,6 +13,10 @@ const DEFAULT_SETTINGS = Object.freeze({
     auxProfileName: '',
     auxProfileId: '',
     auxMaxTokens: 600,
+    outputTagName: '상태창',
+    mainBlockerPrompt: DEFAULT_MAIN_BLOCKER_PROMPT,
+    auxSystemPrompt: DEFAULT_AUX_SYSTEM_PROMPT,
+    auxUserPromptTemplate: DEFAULT_AUX_USER_PROMPT_TEMPLATE,
     contextTurns: 3,
     silentFallback: true,
     debug: false,
@@ -30,7 +39,13 @@ export function getSettings() {
 }
 
 export function initSettings() {
-    getSettings();
+    const settings = getSettings();
+    const preset = getDh29Preset(settings);
+    settings.outputTagName ||= preset.tagName;
+    settings.mainBlockerPrompt ||= DEFAULT_MAIN_BLOCKER_PROMPT;
+    settings.auxSystemPrompt ||= DEFAULT_AUX_SYSTEM_PROMPT;
+    settings.auxUserPromptTemplate ||= DEFAULT_AUX_USER_PROMPT_TEMPLATE;
+    saveSettings();
 }
 
 function saveSettings() {
@@ -108,7 +123,7 @@ function getSelectedProfileSummary(settings, profiles) {
 
 export function renderSettings() {
     const settings = getSettings();
-    const preset = getDh29Preset();
+    const preset = getDh29Preset(settings);
     const container = findSettingsContainer();
     const profiles = getConnectionProfiles();
     debugLog(settings, `Connection profiles count: ${profiles.length}`);
@@ -168,7 +183,34 @@ export function renderSettings() {
             <small>분리 태그: &lt;${escapeHtml(preset.tagName)}&gt;</small>
         </div>
 
+        <div class="aux-split-editor">
+            <label class="aux-split-field">
+                <span>출력 태그명</span>
+                <input id="aux-split-tag-name" class="text_pole" type="text" value="${escapeHtml(settings.outputTagName)}" placeholder="상태창">
+                <small class="aux-split-help">태그 괄호 없이 이름만 입력합니다. 예: 상태창, status, choices</small>
+            </label>
+
+            <label class="aux-split-textarea-field">
+                <span>메인 모델 차단 프롬프트</span>
+                <textarea id="aux-split-main-blocker" class="text_pole" rows="7">${escapeHtml(settings.mainBlockerPrompt)}</textarea>
+                <small class="aux-split-help">메인 모델에게 해당 구조화 출력을 만들지 말라고 알려주는 지시입니다.</small>
+            </label>
+
+            <label class="aux-split-textarea-field">
+                <span>보조 출력 프롬프트</span>
+                <textarea id="aux-split-system-prompt" class="text_pole" rows="14">${escapeHtml(settings.auxSystemPrompt)}</textarea>
+                <small class="aux-split-help">월드인포/작노에 있던 상태창 형식 지시를 여기에 옮겨 넣으세요.</small>
+            </label>
+
+            <label class="aux-split-textarea-field">
+                <span>보조 유저 프롬프트 템플릿</span>
+                <textarea id="aux-split-user-template" class="text_pole" rows="10">${escapeHtml(settings.auxUserPromptTemplate)}</textarea>
+                <small class="aux-split-help">사용 가능 변수: {{mainResponse}}, {{recentContext}}, {{charName}}, {{userName}}, {{tagName}}</small>
+            </label>
+        </div>
+
         <div class="aux-split-actions">
+            <button id="aux-split-reset-prompts" type="button" class="menu_button">프롬프트 기본값 복원</button>
             <button id="aux-split-show-last" type="button" class="menu_button">마지막 보조 응답 보기</button>
         </div>
     `;
@@ -214,6 +256,35 @@ export function renderSettings() {
     bindInput(root, '#aux-split-debug', 'change', (event) => {
         settings.debug = Boolean(event.target.checked);
         saveSettings();
+    });
+
+    bindInput(root, '#aux-split-tag-name', 'input', (event) => {
+        settings.outputTagName = event.target.value.trim() || '상태창';
+        saveSettings();
+    });
+
+    bindInput(root, '#aux-split-main-blocker', 'input', (event) => {
+        settings.mainBlockerPrompt = event.target.value;
+        saveSettings();
+    });
+
+    bindInput(root, '#aux-split-system-prompt', 'input', (event) => {
+        settings.auxSystemPrompt = event.target.value;
+        saveSettings();
+    });
+
+    bindInput(root, '#aux-split-user-template', 'input', (event) => {
+        settings.auxUserPromptTemplate = event.target.value;
+        saveSettings();
+    });
+
+    bindInput(root, '#aux-split-reset-prompts', 'click', () => {
+        settings.outputTagName = '상태창';
+        settings.mainBlockerPrompt = DEFAULT_MAIN_BLOCKER_PROMPT;
+        settings.auxSystemPrompt = DEFAULT_AUX_SYSTEM_PROMPT;
+        settings.auxUserPromptTemplate = DEFAULT_AUX_USER_PROMPT_TEMPLATE;
+        saveSettings();
+        renderSettings();
     });
 
     bindInput(root, '#aux-split-show-last', 'click', () => {

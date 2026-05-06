@@ -28,9 +28,29 @@
     gap: 8px;
 }
 
+.aux-split-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.aux-split-textarea-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
 .aux-split-field input,
-.aux-split-field select {
+.aux-split-field select,
+.aux-split-textarea-field textarea {
     width: 100%;
+}
+
+.aux-split-textarea-field textarea {
+    min-height: 120px;
+    resize: vertical;
+    font-family: var(--monoFontFamily, monospace);
+    line-height: 1.4;
 }
 
 .aux-split-field small {
@@ -62,6 +82,8 @@
 
 .aux-split-actions {
     display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
     justify-content: flex-start;
 }
 

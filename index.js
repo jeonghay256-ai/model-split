@@ -15,7 +15,7 @@ globalThis.auxModelSplitInterceptor = async function auxModelSplitInterceptor(ch
             return;
         }
 
-        const preset = getDh29Preset();
+        const preset = getDh29Preset(settings);
         injectStatusBlocker(chat, type, preset, settings);
     } catch (error) {
         console.error('[AuxSplit] Interceptor failed', error);
@@ -52,7 +52,7 @@ async function handleMessageReceived(eventData) {
         return;
     }
 
-    const preset = getDh29Preset();
+    const preset = getDh29Preset(settings);
     const mainBeforeCompose = message.mes;
     const mainHadBlockedTag = hasTagBlock(mainBeforeCompose, preset.tagName);
     const strippedMain = removeTagBlock(mainBeforeCompose, preset.tagName);
