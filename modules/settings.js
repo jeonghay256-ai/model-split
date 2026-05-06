@@ -7,6 +7,7 @@ import {
 import { debugLog, escapeHtml, getContext, notifyInfo } from './utils.js';
 
 export const MODULE_NAME = 'aux_model_split';
+const LOCAL_STORAGE_KEY = `${MODULE_NAME}_settings_backup`;
 
 const DEFAULT_SETTINGS = Object.freeze({
     enabled: false,
@@ -33,9 +34,11 @@ export function getSettings() {
     }
 
     const existing = context.extensionSettings[MODULE_NAME] ?? {};
+    const backup = readSettingsBackup();
     context.extensionSettings[MODULE_NAME] = {
         ...structuredClone(DEFAULT_SETTINGS),
         ...existing,
+        ...backup,
     };
 
     return context.extensionSettings[MODULE_NAME];
@@ -54,12 +57,60 @@ export function initSettings() {
     saveSettings();
 }
 
-function saveSettings() {
-    getContext()?.saveSettingsDebounced?.();
+function readSettingsBackup() {
+    try {
+        return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
+    } catch (error) {
+        console.warn('[AuxSplit] Failed to read settings backup', error);
+        return {};
+    }
+}
+
+function writeSettingsBackup(settings) {
+    try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(settings));
+    } catch (error) {
+        console.warn('[AuxSplit] Failed to write settings backup', error);
+    }
+}
+
+function saveSettings({ immediate = false } = {}) {
+    const context = getContext();
+    const settings = context?.extensionSettings?.[MODULE_NAME];
+    if (settings) {
+        writeSettingsBackup(settings);
+    }
+
+    const saveNow = context?.saveSettings
+        ?? globalThis.saveSettings;
+    const saveDebounced = context?.saveSettingsDebounced
+        ?? globalThis.saveSettingsDebounced
+        ?? saveNow;
+
+    if (immediate && typeof saveNow === 'function') {
+        saveNow();
+        return;
+    }
+
+    saveDebounced?.();
 }
 
 function bindInput(root, selector, eventName, handler) {
     root.querySelector(selector)?.addEventListener(eventName, handler);
+}
+
+function bindPromptTextarea(root, selector, handler) {
+    const element = root.querySelector(selector);
+    if (!element) {
+        return;
+    }
+
+    element.addEventListener('input', handler);
+    element.addEventListener('change', (event) => {
+        handler(event);
+        saveSettings({ immediate: true });
+    });
+    element.addEventListener('blur', () => saveSettings({ immediate: true }));
 }
 
 function findSettingsContainer() {
@@ -240,7 +291,7 @@ export function renderSettings() {
 
     bindInput(root, '#aux-split-enabled', 'change', (event) => {
         settings.enabled = Boolean(event.target.checked);
-        saveSettings();
+        saveSettings({ immediate: true });
     });
 
     if (profiles.length) {
@@ -250,7 +301,7 @@ export function renderSettings() {
             settings.auxProfileId = profile?.id ?? '';
             settings.auxProfileName = profile?.name ?? '';
             debugLog(settings, `Selected aux profile changed: ${profile?.name || '(none)'} (${profile?.id || 'no id'})`);
-            saveSettings();
+            saveSettings({ immediate: true });
         });
     } else {
         bindInput(root, '#aux-split-profile-name', 'input', (event) => {
@@ -259,6 +310,7 @@ export function renderSettings() {
             debugLog(settings, `Manual aux profile name changed: ${settings.auxProfileName || '(empty)'}`);
             saveSettings();
         });
+        bindInput(root, '#aux-split-profile-name', 'change', () => saveSettings({ immediate: true }));
     }
 
     bindInput(root, '#aux-split-max-tokens', 'input', (event) => {
@@ -273,12 +325,12 @@ export function renderSettings() {
 
     bindInput(root, '#aux-split-silent', 'change', (event) => {
         settings.silentFallback = Boolean(event.target.checked);
-        saveSettings();
+        saveSettings({ immediate: true });
     });
 
     bindInput(root, '#aux-split-debug', 'change', (event) => {
         settings.debug = Boolean(event.target.checked);
-        saveSettings();
+        saveSettings({ immediate: true });
     });
 
     bindInput(root, '#aux-split-tag-name', 'input', (event) => {
@@ -298,20 +350,20 @@ export function renderSettings() {
 
     bindInput(root, '#aux-split-append-footer', 'change', (event) => {
         settings.appendFooterTag = Boolean(event.target.checked);
-        saveSettings();
+        saveSettings({ immediate: true });
     });
 
-    bindInput(root, '#aux-split-main-blocker', 'input', (event) => {
+    bindPromptTextarea(root, '#aux-split-main-blocker', (event) => {
         settings.mainBlockerPrompt = event.target.value;
         saveSettings();
     });
 
-    bindInput(root, '#aux-split-system-prompt', 'input', (event) => {
+    bindPromptTextarea(root, '#aux-split-system-prompt', (event) => {
         settings.auxSystemPrompt = event.target.value;
         saveSettings();
     });
 
-    bindInput(root, '#aux-split-user-template', 'input', (event) => {
+    bindPromptTextarea(root, '#aux-split-user-template', (event) => {
         settings.auxUserPromptTemplate = event.target.value;
         saveSettings();
     });
@@ -324,7 +376,7 @@ export function renderSettings() {
         settings.mainBlockerPrompt = DEFAULT_MAIN_BLOCKER_PROMPT;
         settings.auxSystemPrompt = DEFAULT_AUX_SYSTEM_PROMPT;
         settings.auxUserPromptTemplate = DEFAULT_AUX_USER_PROMPT_TEMPLATE;
-        saveSettings();
+        saveSettings({ immediate: true });
         renderSettings();
     });
 
@@ -332,4 +384,6 @@ export function renderSettings() {
         const output = settings.lastAuxOutput || '아직 저장된 보조 응답이 없습니다.';
         notifyInfo(output);
     });
+
+    window.addEventListener('beforeunload', () => saveSettings({ immediate: true }), { once: true });
 }
