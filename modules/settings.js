@@ -14,6 +14,8 @@ const DEFAULT_SETTINGS = Object.freeze({
     auxProfileId: '',
     auxMaxTokens: 600,
     outputTagName: '상태창',
+    footerTagName: '메뉴',
+    appendFooterTag: true,
     mainBlockerPrompt: DEFAULT_MAIN_BLOCKER_PROMPT,
     auxSystemPrompt: DEFAULT_AUX_SYSTEM_PROMPT,
     auxUserPromptTemplate: DEFAULT_AUX_USER_PROMPT_TEMPLATE,
@@ -42,6 +44,8 @@ export function initSettings() {
     const settings = getSettings();
     const preset = getDh29Preset(settings);
     settings.outputTagName ||= preset.tagName;
+    settings.footerTagName ||= preset.footerTagName;
+    settings.appendFooterTag ??= true;
     settings.mainBlockerPrompt ||= DEFAULT_MAIN_BLOCKER_PROMPT;
     settings.auxSystemPrompt ||= DEFAULT_AUX_SYSTEM_PROMPT;
     settings.auxUserPromptTemplate ||= DEFAULT_AUX_USER_PROMPT_TEMPLATE;
@@ -190,6 +194,17 @@ export function renderSettings() {
                 <small class="aux-split-help">태그 괄호 없이 이름만 입력합니다. 예: 상태창, status, choices</small>
             </label>
 
+            <label class="aux-split-field">
+                <span>하단 마커 태그명</span>
+                <input id="aux-split-footer-tag-name" class="text_pole" type="text" value="${escapeHtml(settings.footerTagName)}" placeholder="메뉴">
+                <small class="aux-split-help">닫는 태그가 없는 하단 마커입니다. DH-29 기본값: 메뉴</small>
+            </label>
+
+            <label class="checkbox_label aux-split-row">
+                <input id="aux-split-append-footer" type="checkbox" ${settings.appendFooterTag ? 'checked' : ''}>
+                <span>하단 마커를 최종 메시지 맨 아래에 붙이기</span>
+            </label>
+
             <label class="aux-split-textarea-field">
                 <span>메인 모델 차단 프롬프트</span>
                 <textarea id="aux-split-main-blocker" class="text_pole" rows="7">${escapeHtml(settings.mainBlockerPrompt)}</textarea>
@@ -205,7 +220,7 @@ export function renderSettings() {
             <label class="aux-split-textarea-field">
                 <span>보조 유저 프롬프트 템플릿</span>
                 <textarea id="aux-split-user-template" class="text_pole" rows="10">${escapeHtml(settings.auxUserPromptTemplate)}</textarea>
-                <small class="aux-split-help">사용 가능 변수: {{mainResponse}}, {{recentContext}}, {{charName}}, {{userName}}, {{tagName}}</small>
+                <small class="aux-split-help">사용 가능 변수: {{mainResponse}}, {{recentContext}}, {{charName}}, {{userName}}, {{tagName}}, {{footerTagName}}</small>
             </label>
         </div>
 
@@ -263,6 +278,16 @@ export function renderSettings() {
         saveSettings();
     });
 
+    bindInput(root, '#aux-split-footer-tag-name', 'input', (event) => {
+        settings.footerTagName = event.target.value.trim();
+        saveSettings();
+    });
+
+    bindInput(root, '#aux-split-append-footer', 'change', (event) => {
+        settings.appendFooterTag = Boolean(event.target.checked);
+        saveSettings();
+    });
+
     bindInput(root, '#aux-split-main-blocker', 'input', (event) => {
         settings.mainBlockerPrompt = event.target.value;
         saveSettings();
@@ -280,6 +305,8 @@ export function renderSettings() {
 
     bindInput(root, '#aux-split-reset-prompts', 'click', () => {
         settings.outputTagName = '상태창';
+        settings.footerTagName = '메뉴';
+        settings.appendFooterTag = true;
         settings.mainBlockerPrompt = DEFAULT_MAIN_BLOCKER_PROMPT;
         settings.auxSystemPrompt = DEFAULT_AUX_SYSTEM_PROMPT;
         settings.auxUserPromptTemplate = DEFAULT_AUX_USER_PROMPT_TEMPLATE;

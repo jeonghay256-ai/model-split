@@ -1,7 +1,15 @@
 import { callAuxModel, resetAuxCallState } from './modules/aux-caller.js';
 import { buildAuxPrompt } from './modules/prompt-builder.js';
 import { getDh29Preset } from './modules/preset-manager.js';
-import { composeMessageWithStatus, extractTagBlock, hasTagBlock, removeTagBlock } from './modules/tag-assembler.js';
+import {
+    composeMessageWithStatus,
+    extractMarkerTag,
+    extractTagBlock,
+    hasMarkerTag,
+    hasTagBlock,
+    removeMarkerTag,
+    removeTagBlock,
+} from './modules/tag-assembler.js';
 import { getSettings, initSettings, renderSettings } from './modules/settings.js';
 import { debugLog, getContext, notifyError, notifyWarning, setLastCallMetadata } from './modules/utils.js';
 import { injectStatusBlocker } from './modules/interceptor.js';
@@ -55,14 +63,18 @@ async function handleMessageReceived(eventData) {
     const preset = getDh29Preset(settings);
     const mainBeforeCompose = message.mes;
     const mainHadBlockedTag = hasTagBlock(mainBeforeCompose, preset.tagName);
+    const mainHadFooterTag = settings.appendFooterTag && hasMarkerTag(mainBeforeCompose, preset.footerTagName);
     const strippedMain = removeTagBlock(mainBeforeCompose, preset.tagName);
+    const strippedMainWithFooter = settings.appendFooterTag
+        ? removeMarkerTag(strippedMain.text, preset.footerTagName)
+        : { text: strippedMain.text, removed: null };
     if (mainHadBlockedTag) {
         debugLog(settings, 'Main response already contains status tag; will replace it if aux succeeds');
     }
 
     try {
         const prompts = buildAuxPrompt({
-            mainResponse: strippedMain.text,
+            mainResponse: strippedMainWithFooter.text,
             context,
             settings,
             preset,
@@ -71,15 +83,18 @@ async function handleMessageReceived(eventData) {
         debugLog(settings, 'Aux call starting');
         const raw = await callAuxModel(prompts, settings);
         const statusBlock = extractTagBlock(raw, preset.tagName);
+        const auxFooterMarker = settings.appendFooterTag
+            ? (extractMarkerTag(raw, preset.footerTagName) || `<${preset.footerTagName}>`)
+            : '';
 
-        message.mes = composeMessageWithStatus(strippedMain.text, statusBlock);
+        message.mes = composeMessageWithStatus(strippedMainWithFooter.text, statusBlock, auxFooterMarker);
         settings.lastAuxOutput = raw;
         context?.saveSettingsDebounced?.();
         await setLastCallMetadata({
             input: {
                 ...prompts,
                 mainResponse: mainBeforeCompose,
-                strippedMainResponse: strippedMain.text,
+                strippedMainResponse: strippedMainWithFooter.text,
             },
             output: raw,
             error: null,
@@ -87,8 +102,11 @@ async function handleMessageReceived(eventData) {
             messageId,
             mainBeforeCompose,
             mainHadBlockedTag,
+            mainHadFooterTag,
             removedMainStatusBlock: strippedMain.removed,
+            removedMainFooterMarker: strippedMainWithFooter.removed,
             auxStatusBlock: statusBlock,
+            auxFooterMarker,
             replacementMode: mainHadBlockedTag ? 'replace_main_status' : 'prepend_aux_status',
             finalMessagePreview: message.mes.slice(0, 1000),
         });
@@ -104,8 +122,11 @@ async function handleMessageReceived(eventData) {
             messageId,
             mainBeforeCompose,
             mainHadBlockedTag,
+            mainHadFooterTag,
             removedMainStatusBlock: null,
+            removedMainFooterMarker: null,
             auxStatusBlock: null,
+            auxFooterMarker: null,
             replacementMode: 'fallback_original_main',
             finalMessagePreview: mainBeforeCompose.slice(0, 1000),
         });

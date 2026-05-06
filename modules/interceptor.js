@@ -18,7 +18,9 @@ export function injectStatusBlocker(chat, type, preset, settings) {
         is_system: true,
         name: 'Aux Model Split',
         send_date: Date.now(),
-        mes: preset.blockerText.replaceAll('{{tagName}}', preset.tagName),
+        mes: preset.blockerText
+            .replaceAll('{{tagName}}', preset.tagName)
+            .replaceAll('{{footerTagName}}', preset.footerTagName || ''),
     };
 
     const insertAt = Math.max(0, chat.length - 1);
