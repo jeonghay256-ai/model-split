@@ -55,12 +55,25 @@ async function handleMessageReceived(eventData) {
     const preset = getDh29Preset();
     if (hasTagBlock(message.mes, preset.tagName)) {
         debugLog(settings, 'Main response already contains status tag; aux call skipped');
+        await setLastCallMetadata({
+            input: null,
+            output: null,
+            error: null,
+            skipped: true,
+            skipReason: 'main_had_blocked_tag',
+            messageId,
+            mainBeforeCompose: message.mes,
+            mainHadBlockedTag: true,
+            auxStatusBlock: null,
+            finalMessagePreview: message.mes.slice(0, 1000),
+        });
         return;
     }
 
     try {
+        const mainBeforeCompose = message.mes;
         const prompts = buildAuxPrompt({
-            mainResponse: message.mes,
+            mainResponse: mainBeforeCompose,
             context,
             settings,
             preset,
@@ -70,22 +83,37 @@ async function handleMessageReceived(eventData) {
         const raw = await callAuxModel(prompts, settings);
         const statusBlock = extractTagBlock(raw, preset.tagName);
 
-        message.mes = composeMessageWithStatus(message.mes, statusBlock);
+        message.mes = composeMessageWithStatus(mainBeforeCompose, statusBlock);
         settings.lastAuxOutput = raw;
         context?.saveSettingsDebounced?.();
         await setLastCallMetadata({
-            input: prompts,
+            input: {
+                ...prompts,
+                mainResponse: mainBeforeCompose,
+            },
             output: raw,
             error: null,
+            skipped: false,
+            messageId,
+            mainBeforeCompose,
+            mainHadBlockedTag: false,
+            auxStatusBlock: statusBlock,
+            finalMessagePreview: message.mes.slice(0, 1000),
         });
 
-        debugLog(settings, 'Status tag appended');
+        debugLog(settings, `Status tag prepended; messageId=${messageId}, statusLength=${statusBlock.length}`);
     } catch (error) {
         console.error('[AuxSplit] Aux processing failed', error);
         await setLastCallMetadata({
             input: null,
             output: null,
             error: String(error?.message ?? error),
+            skipped: false,
+            messageId,
+            mainBeforeCompose: message?.mes ?? '',
+            mainHadBlockedTag: hasTagBlock(message?.mes ?? '', preset.tagName),
+            auxStatusBlock: null,
+            finalMessagePreview: message?.mes?.slice?.(0, 1000) ?? '',
         });
 
         if (!settings.silentFallback) {
