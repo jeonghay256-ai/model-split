@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     auxMaxTokens: 600,
     outputTagName: '상태창',
     footerTagName: '메뉴',
+    omitFooterWhenTagName: 'd-0',
     appendFooterTag: true,
     mainBlockerPrompt: DEFAULT_MAIN_BLOCKER_PROMPT,
     auxSystemPrompt: DEFAULT_AUX_SYSTEM_PROMPT,
@@ -45,6 +46,7 @@ export function initSettings() {
     const preset = getDh29Preset(settings);
     settings.outputTagName ||= preset.tagName;
     settings.footerTagName ||= preset.footerTagName;
+    settings.omitFooterWhenTagName ||= preset.omitFooterWhenTagName;
     settings.appendFooterTag ??= true;
     settings.mainBlockerPrompt ||= DEFAULT_MAIN_BLOCKER_PROMPT;
     settings.auxSystemPrompt ||= DEFAULT_AUX_SYSTEM_PROMPT;
@@ -200,6 +202,12 @@ export function renderSettings() {
                 <small class="aux-split-help">닫는 태그가 없는 하단 마커입니다. DH-29 기본값: 메뉴</small>
             </label>
 
+            <label class="aux-split-field">
+                <span>마커 생략 조건 태그명</span>
+                <input id="aux-split-omit-footer-tag-name" class="text_pole" type="text" value="${escapeHtml(settings.omitFooterWhenTagName)}" placeholder="d-0">
+                <small class="aux-split-help">이 마커가 있으면 하단 마커를 붙이지 않습니다. DH-29 기본값: d-0</small>
+            </label>
+
             <label class="checkbox_label aux-split-row">
                 <input id="aux-split-append-footer" type="checkbox" ${settings.appendFooterTag ? 'checked' : ''}>
                 <span>하단 마커를 최종 메시지 맨 아래에 붙이기</span>
@@ -220,7 +228,7 @@ export function renderSettings() {
             <label class="aux-split-textarea-field">
                 <span>보조 유저 프롬프트 템플릿</span>
                 <textarea id="aux-split-user-template" class="text_pole" rows="10">${escapeHtml(settings.auxUserPromptTemplate)}</textarea>
-                <small class="aux-split-help">사용 가능 변수: {{mainResponse}}, {{recentContext}}, {{charName}}, {{userName}}, {{tagName}}, {{footerTagName}}</small>
+                <small class="aux-split-help">사용 가능 변수: {{mainResponse}}, {{recentContext}}, {{charName}}, {{userName}}, {{tagName}}, {{footerTagName}}, {{omitFooterWhenTagName}}</small>
             </label>
         </div>
 
@@ -283,6 +291,11 @@ export function renderSettings() {
         saveSettings();
     });
 
+    bindInput(root, '#aux-split-omit-footer-tag-name', 'input', (event) => {
+        settings.omitFooterWhenTagName = event.target.value.trim();
+        saveSettings();
+    });
+
     bindInput(root, '#aux-split-append-footer', 'change', (event) => {
         settings.appendFooterTag = Boolean(event.target.checked);
         saveSettings();
@@ -306,6 +319,7 @@ export function renderSettings() {
     bindInput(root, '#aux-split-reset-prompts', 'click', () => {
         settings.outputTagName = '상태창';
         settings.footerTagName = '메뉴';
+        settings.omitFooterWhenTagName = 'd-0';
         settings.appendFooterTag = true;
         settings.mainBlockerPrompt = DEFAULT_MAIN_BLOCKER_PROMPT;
         settings.auxSystemPrompt = DEFAULT_AUX_SYSTEM_PROMPT;

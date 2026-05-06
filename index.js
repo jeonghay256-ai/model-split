@@ -64,6 +64,7 @@ async function handleMessageReceived(eventData) {
     const mainBeforeCompose = message.mes;
     const mainHadBlockedTag = hasTagBlock(mainBeforeCompose, preset.tagName);
     const mainHadFooterTag = settings.appendFooterTag && hasMarkerTag(mainBeforeCompose, preset.footerTagName);
+    const mainHadOmitFooterTag = settings.appendFooterTag && hasMarkerTag(mainBeforeCompose, preset.omitFooterWhenTagName);
     const strippedMain = removeTagBlock(mainBeforeCompose, preset.tagName);
     const strippedMainWithFooter = settings.appendFooterTag
         ? removeMarkerTag(strippedMain.text, preset.footerTagName)
@@ -83,8 +84,10 @@ async function handleMessageReceived(eventData) {
         debugLog(settings, 'Aux call starting');
         const raw = await callAuxModel(prompts, settings);
         const statusBlock = extractTagBlock(raw, preset.tagName);
+        const auxHadOmitFooterTag = settings.appendFooterTag && hasMarkerTag(raw, preset.omitFooterWhenTagName);
+        const shouldAppendFooter = settings.appendFooterTag && !mainHadOmitFooterTag && !auxHadOmitFooterTag;
         const auxFooterMarker = settings.appendFooterTag
-            ? (extractMarkerTag(raw, preset.footerTagName) || `<${preset.footerTagName}>`)
+            ? (shouldAppendFooter ? (extractMarkerTag(raw, preset.footerTagName) || `<${preset.footerTagName}>`) : '')
             : '';
 
         message.mes = composeMessageWithStatus(strippedMainWithFooter.text, statusBlock, auxFooterMarker);
@@ -103,6 +106,8 @@ async function handleMessageReceived(eventData) {
             mainBeforeCompose,
             mainHadBlockedTag,
             mainHadFooterTag,
+            mainHadOmitFooterTag,
+            auxHadOmitFooterTag,
             removedMainStatusBlock: strippedMain.removed,
             removedMainFooterMarker: strippedMainWithFooter.removed,
             auxStatusBlock: statusBlock,
@@ -123,6 +128,7 @@ async function handleMessageReceived(eventData) {
             mainBeforeCompose,
             mainHadBlockedTag,
             mainHadFooterTag,
+            mainHadOmitFooterTag,
             removedMainStatusBlock: null,
             removedMainFooterMarker: null,
             auxStatusBlock: null,

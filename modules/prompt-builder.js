@@ -38,6 +38,7 @@ export function buildAuxPrompt({ mainResponse, context, settings, preset }) {
         userName,
         tagName: preset.tagName,
         footerTagName: preset.footerTagName || '',
+        omitFooterWhenTagName: preset.omitFooterWhenTagName || '',
     };
     const systemPrompt = applyTemplate(preset.auxSystemPrompt, variables);
     const userPrompt = applyTemplate(preset.auxUserPromptTemplate, variables);

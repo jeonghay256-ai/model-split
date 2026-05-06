@@ -42,7 +42,7 @@ To reduce the main model's status-output workload:
 
 The extension then composes the auxiliary status block back into the normal chat message so the original SillyTavern regex UI still renders.
 
-For DH-29, keep the footer marker setting enabled so `<메뉴>` is placed at the bottom of the final message.
+For DH-29, keep the footer marker setting enabled so `<메뉴>` is placed at the bottom of the final message. The default omit condition is `<d-0>`, matching the card's ending rule.
 
 ## Installation
 

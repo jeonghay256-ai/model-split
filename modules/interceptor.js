@@ -20,7 +20,8 @@ export function injectStatusBlocker(chat, type, preset, settings) {
         send_date: Date.now(),
         mes: preset.blockerText
             .replaceAll('{{tagName}}', preset.tagName)
-            .replaceAll('{{footerTagName}}', preset.footerTagName || ''),
+            .replaceAll('{{footerTagName}}', preset.footerTagName || '')
+            .replaceAll('{{omitFooterWhenTagName}}', preset.omitFooterWhenTagName || ''),
     };
 
     const insertAt = Math.max(0, chat.length - 1);

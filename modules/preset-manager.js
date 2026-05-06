@@ -2,6 +2,7 @@ export const DEFAULT_AUX_SYSTEM_PROMPT = [
     'You generate only the structured status block for the current SillyTavern message.',
     'Return exactly one <{{tagName}}>...</{{tagName}}> block.',
     'If a footer marker is configured, also output exactly one <{{footerTagName}}> marker after the status block.',
+    'If the response contains <{{omitFooterWhenTagName}}>, omit the footer marker.',
     'Do not include roleplay prose, markdown fences, explanations, JSON, or image tags.',
     '',
     '# Status Header',
@@ -19,6 +20,7 @@ export const DEFAULT_AUX_SYSTEM_PROMPT = [
     '# Menu Tags',
     'If the bot uses a menu marker, place <{{footerTagName}}> at the very bottom of the final content.',
     'For DH-29, <{{footerTagName}}> is a single marker tag with no closing tag.',
+    'If printing <{{omitFooterWhenTagName}}>, omit <{{footerTagName}}>.',
 ].join('\n');
 
 export const DEFAULT_AUX_USER_PROMPT_TEMPLATE = [
@@ -32,7 +34,7 @@ export const DEFAULT_AUX_USER_PROMPT_TEMPLATE = [
     '{{mainResponse}}',
     '',
     'Using the status prompt rules, output only one <{{tagName}}>...</{{tagName}}> block.',
-    'If {{footerTagName}} is configured, include <{{footerTagName}}> after the status block.',
+    'If {{footerTagName}} is configured, include <{{footerTagName}}> after the status block unless <{{omitFooterWhenTagName}}> is present.',
 ].join('\n');
 
 export const DEFAULT_MAIN_BLOCKER_PROMPT = [
@@ -51,6 +53,7 @@ const DH29_PRESET = Object.freeze({
     name: 'DH-29 Status MVP',
     tagName: '상태창',
     footerTagName: '메뉴',
+    omitFooterWhenTagName: 'd-0',
     blockerText: DEFAULT_MAIN_BLOCKER_PROMPT,
     auxSystemPrompt: DEFAULT_AUX_SYSTEM_PROMPT,
     auxUserPromptTemplate: DEFAULT_AUX_USER_PROMPT_TEMPLATE,
@@ -71,6 +74,7 @@ export function getDh29Preset(settings = {}) {
         ...DH29_PRESET,
         tagName: settings.outputTagName || DH29_PRESET.tagName,
         footerTagName: settings.footerTagName || DH29_PRESET.footerTagName,
+        omitFooterWhenTagName: settings.omitFooterWhenTagName || DH29_PRESET.omitFooterWhenTagName,
         blockerText: settings.mainBlockerPrompt || DH29_PRESET.blockerText,
         auxSystemPrompt: settings.auxSystemPrompt || DH29_PRESET.auxSystemPrompt,
         auxUserPromptTemplate: settings.auxUserPromptTemplate || DH29_PRESET.auxUserPromptTemplate,
