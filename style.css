@@ -5,6 +5,84 @@
     padding: 10px 0;
 }
 
+.aux-split-menu-button {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    width: 100%;
+    min-height: 40px;
+    white-space: nowrap;
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+}
+
+.aux-split-dialog[hidden] {
+    display: none;
+}
+
+.aux-split-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+}
+
+.aux-split-dialog-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.aux-split-dialog-panel {
+    position: relative;
+    z-index: 1;
+    width: min(920px, calc(100vw - 28px));
+    max-height: min(860px, calc(100vh - 28px));
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background: var(--SmartThemeBlurTintColor);
+    color: var(--SmartThemeBodyColor);
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+}
+
+.aux-split-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+}
+
+.aux-split-dialog-header h3 {
+    margin: 0;
+}
+
+.aux-split-icon-button {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    padding: 0;
+    font-size: 20px;
+    line-height: 1;
+}
+
+.aux-split-dialog-body {
+    overflow: auto;
+    padding: 0 18px 18px;
+}
+
+body.aux-split-dialog-open {
+    overflow: hidden;
+}
+
 .aux-split-header {
     display: flex;
     align-items: center;
@@ -102,6 +180,15 @@
 }
 
 @media (max-width: 600px) {
+    .aux-split-dialog {
+        padding: 8px;
+    }
+
+    .aux-split-dialog-panel {
+        width: calc(100vw - 16px);
+        max-height: calc(100vh - 16px);
+    }
+
     .aux-split-field {
         grid-template-columns: 1fr;
     }

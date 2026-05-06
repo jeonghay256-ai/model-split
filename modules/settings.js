@@ -57,6 +57,35 @@ export function initSettings() {
     saveSettings();
 }
 
+export function registerSettingsMenuButton() {
+    const interval = window.setInterval(() => {
+        const menu = document.querySelector('#extensionsMenu');
+        if (!menu) {
+            return;
+        }
+
+        if (document.querySelector('#aux-model-split-menu-button')) {
+            window.clearInterval(interval);
+            return;
+        }
+
+        const button = document.createElement('div');
+        button.id = 'aux-model-split-menu-button';
+        button.className = 'menu_button aux-split-menu-button';
+        button.title = 'Aux Model Split';
+        button.innerHTML = '<span class="fa-solid fa-code-branch"></span><span>Aux Model Split</span>';
+        button.addEventListener('click', () => openSettingsDialog());
+        menu.appendChild(button);
+
+        const extensionsMenuButton = document.querySelector('#extensionsMenuButton');
+        if (extensionsMenuButton instanceof HTMLElement) {
+            extensionsMenuButton.style.display = '';
+        }
+
+        window.clearInterval(interval);
+    }, 250);
+}
+
 function readSettingsBackup() {
     try {
         return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
@@ -113,11 +142,56 @@ function bindPromptTextarea(root, selector, handler) {
     element.addEventListener('blur', () => saveSettings({ immediate: true }));
 }
 
+function ensureSettingsDialog() {
+    let dialog = document.querySelector('#aux-model-split-dialog');
+    if (dialog) {
+        return dialog;
+    }
+
+    dialog = document.createElement('div');
+    dialog.id = 'aux-model-split-dialog';
+    dialog.className = 'aux-split-dialog';
+    dialog.hidden = true;
+    dialog.innerHTML = `
+        <div class="aux-split-dialog-backdrop" data-aux-split-close></div>
+        <section class="aux-split-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="aux-split-dialog-title">
+            <div class="aux-split-dialog-header">
+                <h3 id="aux-split-dialog-title">Aux Model Split</h3>
+                <button id="aux-split-dialog-close" class="menu_button aux-split-icon-button" type="button" title="닫기">×</button>
+            </div>
+            <div id="aux-model-split-dialog-body" class="aux-split-dialog-body"></div>
+        </section>
+    `;
+
+    dialog.addEventListener('click', (event) => {
+        if (event.target instanceof HTMLElement && event.target.matches('[data-aux-split-close], #aux-split-dialog-close')) {
+            closeSettingsDialog();
+        }
+    });
+
+    document.body.appendChild(dialog);
+    return dialog;
+}
+
+export function openSettingsDialog() {
+    renderSettings();
+    const dialog = ensureSettingsDialog();
+    dialog.hidden = false;
+    document.body.classList.add('aux-split-dialog-open');
+}
+
+function closeSettingsDialog() {
+    const dialog = document.querySelector('#aux-model-split-dialog');
+    if (dialog) {
+        dialog.hidden = true;
+    }
+
+    document.body.classList.remove('aux-split-dialog-open');
+}
+
 function findSettingsContainer() {
-    return document.querySelector('#extensions_settings')
-        ?? document.querySelector('#extensions_settings2')
-        ?? document.querySelector('#extension_settings')
-        ?? document.body;
+    const dialog = ensureSettingsDialog();
+    return dialog.querySelector('#aux-model-split-dialog-body') ?? document.body;
 }
 
 function getConnectionProfiles() {

@@ -10,7 +10,7 @@ import {
     removeMarkerTag,
     removeTagBlock,
 } from './modules/tag-assembler.js';
-import { getSettings, initSettings, renderSettings } from './modules/settings.js';
+import { getSettings, initSettings, registerSettingsMenuButton, renderSettings } from './modules/settings.js';
 import { debugLog, getContext, notifyError, notifyWarning, setLastCallMetadata } from './modules/utils.js';
 import { injectStatusBlocker } from './modules/interceptor.js';
 
@@ -173,6 +173,7 @@ function init() {
     initialized = true;
     initSettings();
     renderSettings();
+    registerSettingsMenuButton();
     registerEvents();
     console.log(`[AuxSplit] ${MODULE_NAME} loaded`);
 }
