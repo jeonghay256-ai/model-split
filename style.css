@@ -28,8 +28,17 @@
     gap: 8px;
 }
 
-.aux-split-field input {
+.aux-split-field input,
+.aux-split-field select {
     width: 100%;
+}
+
+.aux-split-field small {
+    grid-column: 2;
+}
+
+.aux-split-help {
+    opacity: 0.75;
 }
 
 .aux-split-row {
@@ -59,5 +68,9 @@
 @media (max-width: 600px) {
     .aux-split-field {
         grid-template-columns: 1fr;
+    }
+
+    .aux-split-field small {
+        grid-column: 1;
     }
 }

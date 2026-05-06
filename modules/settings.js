@@ -6,6 +6,8 @@ export const MODULE_NAME = 'aux_model_split';
 const DEFAULT_SETTINGS = Object.freeze({
     enabled: false,
     auxProfileName: '',
+    auxProfileId: '',
+    auxMaxTokens: 600,
     contextTurns: 3,
     silentFallback: true,
     debug: false,
@@ -46,10 +48,58 @@ function findSettingsContainer() {
         ?? document.body;
 }
 
+function getConnectionProfiles() {
+    const context = getContext();
+    const profiles = context?.extensionSettings?.connectionManager?.profiles;
+    if (!Array.isArray(profiles)) {
+        return [];
+    }
+
+    return profiles.filter(Boolean);
+}
+
+function getSelectedProfileId(settings, profiles) {
+    if (settings.auxProfileId && profiles.some((profile) => profile.id === settings.auxProfileId)) {
+        return settings.auxProfileId;
+    }
+
+    const byName = profiles.find((profile) => profile.name === settings.auxProfileName);
+    if (byName?.id) {
+        settings.auxProfileId = byName.id;
+        settings.auxProfileName = byName.name;
+        saveSettings();
+        return byName.id;
+    }
+
+    return '';
+}
+
+function renderProfileOptions(settings) {
+    const profiles = getConnectionProfiles();
+    const selectedId = getSelectedProfileId(settings, profiles);
+    const options = [
+        `<option value="">Connection Profile 선택</option>`,
+        ...profiles.map((profile) => {
+            const labelParts = [profile.name || profile.id];
+            if (profile.api) {
+                labelParts.push(profile.api);
+            }
+            if (profile.model) {
+                labelParts.push(profile.model);
+            }
+
+            return `<option value="${escapeHtml(profile.id)}" ${profile.id === selectedId ? 'selected' : ''}>${escapeHtml(labelParts.join(' · '))}</option>`;
+        }),
+    ];
+
+    return options.join('');
+}
+
 export function renderSettings() {
     const settings = getSettings();
     const preset = getDh29Preset();
     const container = findSettingsContainer();
+    const profiles = getConnectionProfiles();
     let root = document.querySelector('#aux-model-split-settings');
 
     if (!root) {
@@ -71,8 +121,16 @@ export function renderSettings() {
         </label>
 
         <label class="aux-split-field">
-            <span>보조 모델 프로필 이름</span>
-            <input id="aux-split-profile" class="text_pole" type="text" value="${escapeHtml(settings.auxProfileName)}" placeholder="예: aux-fast">
+            <span>보조 Connection Profile</span>
+            <select id="aux-split-profile" class="text_pole">
+                ${renderProfileOptions(settings)}
+            </select>
+            <small class="aux-split-help">${profiles.length ? '저장된 ST Connection Profile을 직접 호출합니다.' : 'Connection Profile이 없습니다. ST API Connections에서 프로필을 먼저 저장하세요.'}</small>
+        </label>
+
+        <label class="aux-split-field">
+            <span>보조 응답 토큰</span>
+            <input id="aux-split-max-tokens" class="text_pole" type="number" min="100" max="4000" step="50" value="${Number(settings.auxMaxTokens) || 600}">
         </label>
 
         <label class="aux-split-field">
@@ -106,8 +164,16 @@ export function renderSettings() {
         saveSettings();
     });
 
-    bindInput(root, '#aux-split-profile', 'input', (event) => {
-        settings.auxProfileName = event.target.value.trim();
+    bindInput(root, '#aux-split-profile', 'change', (event) => {
+        const profileId = event.target.value;
+        const profile = getConnectionProfiles().find((item) => item.id === profileId);
+        settings.auxProfileId = profile?.id ?? '';
+        settings.auxProfileName = profile?.name ?? '';
+        saveSettings();
+    });
+
+    bindInput(root, '#aux-split-max-tokens', 'input', (event) => {
+        settings.auxMaxTokens = Math.max(100, Math.min(4000, Number(event.target.value) || 600));
         saveSettings();
     });
 
