@@ -2,6 +2,8 @@
 
 SillyTavern extension MVP for splitting DH-29's status block generation into an auxiliary model.
 
+실리태번 전용 보조 모델 출력 확장입니다. 현재는 DH-29 봇카드의 `<상태창>` 분리를 검증하는 MVP입니다.
+
 ## What It Does
 
 - Instructs the main model not to output the DH-29 `<상태창>` block.
