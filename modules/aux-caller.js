@@ -74,6 +74,7 @@ function getConnectionProfiles() {
 
 function getAuxProfile(settings) {
     const profiles = getConnectionProfiles();
+    debugLog(settings, `Connection profiles count: ${profiles.length}`);
     return profiles.find((profile) => profile.id === settings.auxProfileId)
         ?? profiles.find((profile) => profile.name === settings.auxProfileName)
         ?? null;
@@ -112,6 +113,7 @@ async function callConnectionProfile(prompts, settings) {
         temperature: 0.3,
     };
 
+    debugLog(settings, `Selected aux profile: ${profile.name || profile.id} (${profile.id})`);
     debugLog(settings, `Direct profile request: ${profile.name || profile.id}`);
     const response = await service.sendRequest(profile.id, messages, maxTokens, custom, overridePayload);
     return normalizeAuxResponse(response);
@@ -147,6 +149,7 @@ export async function callAuxModel(prompts, settings) {
 async function callAuxModelWithProfileSwitch(prompts, settings) {
     const profile = getAuxProfile(settings);
     const profileName = profile?.name ?? settings.auxProfileName;
+    debugLog(settings, `Selected aux profile fallback: ${profileName || '(none)'}`);
     let savedProfile = '';
 
     try {

@@ -1,5 +1,5 @@
 import { getDh29Preset } from './preset-manager.js';
-import { escapeHtml, getContext, notifyInfo } from './utils.js';
+import { debugLog, escapeHtml, getContext, notifyInfo } from './utils.js';
 
 export const MODULE_NAME = 'aux_model_split';
 
@@ -95,11 +95,24 @@ function renderProfileOptions(settings) {
     return options.join('');
 }
 
+function getSelectedProfileSummary(settings, profiles) {
+    const selected = profiles.find((profile) => profile.id === settings.auxProfileId)
+        ?? profiles.find((profile) => profile.name === settings.auxProfileName);
+
+    if (!selected) {
+        return settings.auxProfileName || '(none)';
+    }
+
+    return `${selected.name || selected.id} (${selected.id || 'no id'})`;
+}
+
 export function renderSettings() {
     const settings = getSettings();
     const preset = getDh29Preset();
     const container = findSettingsContainer();
     const profiles = getConnectionProfiles();
+    debugLog(settings, `Connection profiles count: ${profiles.length}`);
+    debugLog(settings, `Selected aux profile: ${getSelectedProfileSummary(settings, profiles)}`);
     let root = document.querySelector('#aux-model-split-settings');
 
     if (!root) {
@@ -122,9 +135,10 @@ export function renderSettings() {
 
         <label class="aux-split-field">
             <span>보조 Connection Profile</span>
-            <select id="aux-split-profile" class="text_pole">
-                ${renderProfileOptions(settings)}
-            </select>
+            ${profiles.length
+                ? `<select id="aux-split-profile" class="text_pole">${renderProfileOptions(settings)}</select>`
+                : `<input id="aux-split-profile-name" class="text_pole" type="text" value="${escapeHtml(settings.auxProfileName)}" placeholder="수동 프로필 이름 입력">`
+            }
             <small class="aux-split-help">${profiles.length ? '저장된 ST Connection Profile을 직접 호출합니다.' : 'Connection Profile이 없습니다. ST API Connections에서 프로필을 먼저 저장하세요.'}</small>
         </label>
 
@@ -164,13 +178,23 @@ export function renderSettings() {
         saveSettings();
     });
 
-    bindInput(root, '#aux-split-profile', 'change', (event) => {
-        const profileId = event.target.value;
-        const profile = getConnectionProfiles().find((item) => item.id === profileId);
-        settings.auxProfileId = profile?.id ?? '';
-        settings.auxProfileName = profile?.name ?? '';
-        saveSettings();
-    });
+    if (profiles.length) {
+        bindInput(root, '#aux-split-profile', 'change', (event) => {
+            const profileId = event.target.value;
+            const profile = getConnectionProfiles().find((item) => item.id === profileId);
+            settings.auxProfileId = profile?.id ?? '';
+            settings.auxProfileName = profile?.name ?? '';
+            debugLog(settings, `Selected aux profile changed: ${profile?.name || '(none)'} (${profile?.id || 'no id'})`);
+            saveSettings();
+        });
+    } else {
+        bindInput(root, '#aux-split-profile-name', 'input', (event) => {
+            settings.auxProfileId = '';
+            settings.auxProfileName = event.target.value.trim();
+            debugLog(settings, `Manual aux profile name changed: ${settings.auxProfileName || '(empty)'}`);
+            saveSettings();
+        });
+    }
 
     bindInput(root, '#aux-split-max-tokens', 'input', (event) => {
         settings.auxMaxTokens = Math.max(100, Math.min(4000, Number(event.target.value) || 600));

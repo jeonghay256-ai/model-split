@@ -65,6 +65,20 @@
     justify-content: flex-start;
 }
 
+.aux-split-actions .menu_button,
+#aux-split-show-last {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    min-width: 150px;
+    max-width: 100%;
+    white-space: nowrap;
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+    line-height: 1.4;
+}
+
 @media (max-width: 600px) {
     .aux-split-field {
         grid-template-columns: 1fr;
