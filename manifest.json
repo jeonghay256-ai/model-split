@@ -1,0 +1,14 @@
+{
+    "display_name": "Aux Model Split",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "dependencies": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "Anonymous",
+    "version": "0.1.0",
+    "homePage": "",
+    "auto_update": false,
+    "generate_interceptor": "auxModelSplitInterceptor"
+}

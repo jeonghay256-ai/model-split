@@ -1,0 +1,63 @@
+#aux-model-split-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 0;
+}
+
+.aux-split-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.aux-split-header h3 {
+    margin: 0;
+}
+
+.aux-split-header span,
+.aux-split-preset small {
+    opacity: 0.75;
+}
+
+.aux-split-field {
+    display: grid;
+    grid-template-columns: minmax(130px, 0.45fr) minmax(160px, 1fr);
+    align-items: center;
+    gap: 8px;
+}
+
+.aux-split-field input {
+    width: 100%;
+}
+
+.aux-split-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.aux-split-preset {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+}
+
+.aux-split-preset code {
+    white-space: normal;
+}
+
+.aux-split-actions {
+    display: flex;
+    justify-content: flex-start;
+}
+
+@media (max-width: 600px) {
+    .aux-split-field {
+        grid-template-columns: 1fr;
+    }
+}
