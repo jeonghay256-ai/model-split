@@ -311,12 +311,26 @@ function renderOutputsList(preset) {
             <article class="aux-split-output-card ${enabledClass}">
                 <div class="aux-split-output-head">
                     <b>${escapeHtml(output?.label || output?.id || `output ${index + 1}`)}</b>
-                    <button
-                        class="menu_button aux-split-output-toggle"
-                        type="button"
-                        data-output-index="${index}"
-                        title="이 출력 항목 활성화/비활성화"
-                    >${escapeHtml(enabledText)}</button>
+                    <div class="aux-split-output-card-actions">
+                        <button
+                            class="menu_button aux-split-output-toggle"
+                            type="button"
+                            data-output-index="${index}"
+                            title="이 출력 항목 활성화/비활성화"
+                        >${escapeHtml(enabledText)}</button>
+                        <button
+                            class="menu_button aux-split-output-clone"
+                            type="button"
+                            data-output-index="${index}"
+                            title="이 출력 항목 복제"
+                        >복제</button>
+                        <button
+                            class="menu_button aux-split-output-delete"
+                            type="button"
+                            data-output-index="${index}"
+                            title="이 출력 항목 삭제"
+                        >삭제</button>
+                    </div>
                 </div>
                 <div class="aux-split-output-grid">
                     <span>ID</span><code>${escapeHtml(output?.id || '')}</code>
@@ -540,6 +554,9 @@ export function renderSettings() {
             <div class="aux-split-section-title">
                 <b>출력 항목</b>
                 <small>${showLegacyFields ? '단순 프리셋은 아래 호환 필드로 빠르게 수정할 수 있습니다.' : '다중 출력 프리셋은 outputs[] 구조로 합성됩니다.'}</small>
+            </div>
+            <div class="aux-split-output-toolbar">
+                <button id="aux-split-add-output" type="button" class="menu_button">출력 항목 추가</button>
             </div>
             <div class="aux-split-output-list">
                 ${renderOutputsList(preset)}
@@ -863,6 +880,36 @@ export function renderSettings() {
         saveSettings({ immediate: true });
     });
 
+    bindInput(root, '#aux-split-add-output', 'click', () => {
+        const choice = window.prompt(
+            '추가할 출력 항목 타입을 입력하세요:\n1 = 블록 태그\n2 = 단일 마커\n3 = Analysis + JSONPatch',
+            '1',
+        );
+        if (choice === null) return;
+
+        const normalized = choice.trim().toLowerCase();
+        let template = 'block';
+        if (['2', 'marker', '마커'].includes(normalized)) {
+            template = 'marker';
+        } else if (['3', 'jsonpatch', 'json', 'analysis', '변수'].includes(normalized)) {
+            template = 'jsonPatch';
+        } else if (!['1', 'block', '블록'].includes(normalized)) {
+            notifyError('알 수 없는 출력 항목 타입입니다.');
+            return;
+        }
+
+        const output = PresetMgr.createOutput(template);
+        const idx = PresetMgr.addOutputToPreset(settings, settings.activePresetIndex, output);
+        if (idx < 0) {
+            notifyError('출력 항목 추가 실패: 활성 프리셋을 찾을 수 없습니다.');
+            return;
+        }
+
+        saveSettings({ immediate: true });
+        renderSettings();
+        notifyInfo(`출력 항목 추가 완료: ${output.label || output.id}`);
+    });
+
     root.querySelectorAll('.aux-split-output-toggle').forEach((button) => {
         button.addEventListener('click', (event) => {
             const target = event.currentTarget;
@@ -878,6 +925,48 @@ export function renderSettings() {
             saveSettings({ immediate: true });
             renderSettings();
             notifyInfo(`${output.label || output.id || output.tagName || 'output'}: ${output.enabled ? '활성화' : '비활성화'}`);
+        });
+    });
+
+    root.querySelectorAll('.aux-split-output-clone').forEach((button) => {
+        button.addEventListener('click', (event) => {
+            const target = event.currentTarget;
+            const outputIndex = Number(target?.dataset?.outputIndex);
+            const newIdx = PresetMgr.cloneOutput(settings, settings.activePresetIndex, outputIndex);
+            if (newIdx < 0) {
+                notifyError('출력 항목 복제 실패: 항목을 찾을 수 없습니다.');
+                return;
+            }
+
+            saveSettings({ immediate: true });
+            renderSettings();
+            notifyInfo(`출력 항목 복제 완료 (idx=${newIdx})`);
+        });
+    });
+
+    root.querySelectorAll('.aux-split-output-delete').forEach((button) => {
+        button.addEventListener('click', (event) => {
+            const target = event.currentTarget;
+            const outputIndex = Number(target?.dataset?.outputIndex);
+            const active = PresetMgr.getPresetByIndex(settings, settings.activePresetIndex);
+            const output = active?.outputs?.[outputIndex];
+            if (!output) {
+                notifyError('출력 항목 삭제 실패: 항목을 찾을 수 없습니다.');
+                return;
+            }
+
+            const confirmed = window.confirm(`"${output.label || output.id || output.tagName}" 출력 항목을 삭제할까요?`);
+            if (!confirmed) return;
+
+            const ok = PresetMgr.deleteOutput(settings, settings.activePresetIndex, outputIndex);
+            if (!ok) {
+                notifyError('출력 항목 삭제 실패: 마지막 1개 출력 항목은 삭제할 수 없습니다.');
+                return;
+            }
+
+            saveSettings({ immediate: true });
+            renderSettings();
+            notifyInfo('출력 항목 삭제 완료');
         });
     });
 

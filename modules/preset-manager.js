@@ -135,6 +135,68 @@ function buildOutput({
     };
 }
 
+function normalizeOutputId(value) {
+    const base = String(value ?? '')
+        .trim()
+        .replace(/[^\w\-]+/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '');
+    return base || `output_${Date.now()}`;
+}
+
+function assignUniqueOutputId(preset, output) {
+    if (!preset || !Array.isArray(preset.outputs) || !output) {
+        return output;
+    }
+
+    const base = normalizeOutputId(output.id || output.tagName || output.label);
+    const used = new Set(preset.outputs.map(o => o?.id).filter(Boolean));
+    let candidate = base;
+    let suffix = 2;
+    while (used.has(candidate)) {
+        candidate = `${base}_${suffix}`;
+        suffix += 1;
+    }
+    output.id = candidate;
+    return output;
+}
+
+export function createOutput(template = 'block') {
+    if (template === 'marker') {
+        return buildOutput({
+            id: 'marker',
+            label: '하단 마커',
+            type: 'marker',
+            tagName: 'marker',
+            outputTemplate: '<{{tagName}}>',
+            position: 'append',
+            responseMode: 'raw',
+        });
+    }
+
+    if (template === 'jsonPatch') {
+        return buildOutput({
+            id: 'updateVariable',
+            label: '변수 업데이트 (Analysis + JSONPatch)',
+            type: 'nested',
+            tagName: 'UpdateVariable',
+            outputTemplate: '<{{tagName}}>\n<Analysis>{{analysis}}</Analysis>\n<JSONPatch>{{patch}}</JSONPatch>\n</{{tagName}}>',
+            position: 'append',
+            responseMode: 'json+template',
+        });
+    }
+
+    return buildOutput({
+        id: 'block',
+        label: '블록 태그',
+        type: 'block',
+        tagName: 'tag',
+        outputTemplate: '<{{tagName}}>\n{{content}}\n</{{tagName}}>',
+        position: 'append',
+        responseMode: 'raw',
+    });
+}
+
 export function migrateLegacySettingsToPresets(settings) {
     if (!settings || typeof settings !== 'object') {
         return;
@@ -468,6 +530,51 @@ export function updatePreset(settings, idx, patcher) {
     }
 
     return false;
+}
+
+export function addOutputToPreset(settings, presetIdx, output) {
+    const preset = getPresetByIndex(settings, presetIdx);
+    if (!preset || !output || typeof output !== 'object') {
+        return -1;
+    }
+    if (!Array.isArray(preset.outputs)) {
+        preset.outputs = [];
+    }
+
+    assignUniqueOutputId(preset, output);
+    preset.outputs.push(output);
+    return preset.outputs.length - 1;
+}
+
+export function cloneOutput(settings, presetIdx, outputIdx) {
+    const preset = getPresetByIndex(settings, presetIdx);
+    const source = preset?.outputs?.[outputIdx];
+    if (!preset || !source) {
+        return -1;
+    }
+
+    const cloned = structuredClone(source);
+    cloned.label = `${source.label || source.id || source.tagName || 'Output'} (copy)`;
+    assignUniqueOutputId(preset, cloned);
+    preset.outputs.splice(outputIdx + 1, 0, cloned);
+    return outputIdx + 1;
+}
+
+export function deleteOutput(settings, presetIdx, outputIdx) {
+    const preset = getPresetByIndex(settings, presetIdx);
+    if (!preset || !Array.isArray(preset.outputs)) {
+        return false;
+    }
+    if (preset.outputs.length <= 1) {
+        return false;
+    }
+    if (!Number.isInteger(outputIdx) || outputIdx < 0 || outputIdx >= preset.outputs.length) {
+        return false;
+    }
+
+    preset.outputs.splice(outputIdx, 1);
+    syncActivePresetToFlatFields(settings);
+    return true;
 }
 
 export function deletePreset(settings, idx) {

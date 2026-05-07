@@ -215,6 +215,20 @@ body.aux-split-dialog-open {
     gap: 8px;
 }
 
+.aux-split-output-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.aux-split-output-toolbar .menu_button {
+    width: auto;
+    min-width: 140px;
+    white-space: nowrap;
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+}
+
 .aux-split-output-card {
     display: flex;
     flex-direction: column;
@@ -237,20 +251,30 @@ body.aux-split-dialog-open {
     gap: 8px;
 }
 
-.aux-split-output-toggle {
+.aux-split-output-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 5px;
+}
+
+.aux-split-output-card-actions .menu_button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: auto;
-    min-width: 54px;
+    min-width: 46px;
     min-height: 28px;
     padding: 2px 7px;
     border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 999px;
     font-size: 0.82em;
     white-space: nowrap;
     writing-mode: horizontal-tb;
     text-orientation: mixed;
+}
+
+.aux-split-output-toggle {
+    border-radius: 999px;
 }
 
 .aux-split-output-card.is-disabled .aux-split-output-toggle {

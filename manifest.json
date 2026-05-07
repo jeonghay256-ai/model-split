@@ -7,7 +7,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "Anonymous",
-    "version": "0.2.4",
+    "version": "0.2.5",
     "homePage": "https://github.com/jeonghay256-ai/model-split",
     "auto_update": true,
     "generate_interceptor": "auxModelSplitInterceptor"
