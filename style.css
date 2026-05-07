@@ -148,14 +148,45 @@ body.aux-split-dialog-open {
 .aux-split-preset {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 8px;
+    gap: 6px;
+    padding: 10px;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 6px;
 }
 
+.aux-split-preset > b {
+    margin-bottom: 2px;
+}
+
 .aux-split-preset code {
     white-space: normal;
+}
+
+.aux-split-preset-summary {
+    opacity: 0.75;
+    font-family: var(--monoFontFamily, monospace);
+    font-size: 0.85em;
+}
+
+.aux-split-preset-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.aux-split-preset-actions .menu_button {
+    width: auto;
+    min-width: 110px;
+    max-width: 100%;
+    white-space: nowrap;
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+    line-height: 1.4;
+}
+
+.aux-split-checkbox-row {
+    margin-top: 4px;
 }
 
 .aux-split-actions {

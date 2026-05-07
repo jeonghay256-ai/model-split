@@ -48,16 +48,53 @@ export const DEFAULT_MAIN_BLOCKER_PROMPT = [
     'Keep all other character, world, and roleplay instructions.',
 ].join('\n');
 
-const DH29_PRESET = Object.freeze({
-    id: 'dh-29-status-mvp',
-    name: 'DH-29 Status MVP',
-    tagName: '상태창',
-    footerTagName: '메뉴',
-    omitFooterWhenTagName: 'd-0',
+export const CURRENT_SCHEMA_VERSION = 2;
+
+export const DEFAULT_PRESET = Object.freeze({
+    id: 'aux-split-default',
+    name: 'Default (DH-29 Status MVP)',
+    version: '1.0.0',
+    description: '0.1.3 MVP 의 DH-29 status+menu 분리 동작과 동등한 기본 프리셋입니다.',
+
+    outputs: Object.freeze([
+        Object.freeze({
+            id: 'status',
+            label: '상태창',
+            type: 'block',
+            tagName: '상태창',
+            enabled: true,
+            outputTemplate: '<{{tagName}}>\n{{content}}\n</{{tagName}}>',
+            position: 'prepend',
+            responseMode: 'raw',
+            omitWhenTagPresent: '',
+        }),
+        Object.freeze({
+            id: 'menu',
+            label: '하단 마커',
+            type: 'marker',
+            tagName: '메뉴',
+            enabled: true,
+            outputTemplate: '<{{tagName}}>',
+            position: 'append',
+            responseMode: 'raw',
+            omitWhenTagPresent: 'd-0',
+        }),
+    ]),
+
+    extraBlockTags: Object.freeze([]),
     blockerText: DEFAULT_MAIN_BLOCKER_PROMPT,
     auxSystemPrompt: DEFAULT_AUX_SYSTEM_PROMPT,
     auxUserPromptTemplate: DEFAULT_AUX_USER_PROMPT_TEMPLATE,
+    variables: Object.freeze([]),
+    variableSets: null,
 });
+
+const VALID_OUTPUT_TYPES = Object.freeze(['block', 'marker', 'nested']);
+const VALID_POSITIONS = Object.freeze(['prepend', 'append']);
+const VALID_RESPONSE_MODES = Object.freeze(['raw', 'json+template']);
+const EXPORT_FORMAT_SINGLE = 'aux-model-split-preset';
+const EXPORT_FORMAT_BUNDLE = 'aux-model-split-presets-bundle';
+const EXPORT_FORMAT_VERSION = 1;
 
 export function applyTemplate(template, variables) {
     return String(template ?? '').replace(/\{\{(\w+)\}\}/g, (match, key) => {
@@ -69,14 +106,722 @@ export function applyTemplate(template, variables) {
     });
 }
 
-export function getDh29Preset(settings = {}) {
+function buildOutput({
+    id,
+    label,
+    type,
+    tagName,
+    outputTemplate,
+    position,
+    responseMode = 'raw',
+    omitWhenTagPresent = '',
+    enabled = true,
+}) {
     return {
-        ...DH29_PRESET,
-        tagName: settings.outputTagName || DH29_PRESET.tagName,
-        footerTagName: settings.footerTagName || DH29_PRESET.footerTagName,
-        omitFooterWhenTagName: settings.omitFooterWhenTagName || DH29_PRESET.omitFooterWhenTagName,
-        blockerText: settings.mainBlockerPrompt || DH29_PRESET.blockerText,
-        auxSystemPrompt: settings.auxSystemPrompt || DH29_PRESET.auxSystemPrompt,
-        auxUserPromptTemplate: settings.auxUserPromptTemplate || DH29_PRESET.auxUserPromptTemplate,
+        id,
+        label,
+        type,
+        tagName,
+        enabled,
+        outputTemplate,
+        position,
+        responseMode,
+        omitWhenTagPresent,
     };
+}
+
+export function migrateLegacySettingsToPresets(settings) {
+    if (!settings || typeof settings !== 'object') {
+        return;
+    }
+
+    if (settings.schemaVersion >= CURRENT_SCHEMA_VERSION
+        && Array.isArray(settings.presets)
+        && settings.presets.length > 0) {
+        return;
+    }
+
+    const legacyTagName = (typeof settings.outputTagName === 'string' && settings.outputTagName.trim())
+        ? settings.outputTagName
+        : '상태창';
+    const legacyFooterTag = (typeof settings.footerTagName === 'string' && settings.footerTagName.trim())
+        ? settings.footerTagName
+        : '';
+    const legacyOmitWhen = (typeof settings.omitFooterWhenTagName === 'string')
+        ? settings.omitFooterWhenTagName
+        : '';
+    const blockerText = settings.mainBlockerPrompt || DEFAULT_MAIN_BLOCKER_PROMPT;
+    const auxSys = settings.auxSystemPrompt || DEFAULT_AUX_SYSTEM_PROMPT;
+    const auxUser = settings.auxUserPromptTemplate || DEFAULT_AUX_USER_PROMPT_TEMPLATE;
+    const includeFooter = settings.appendFooterTag !== false && !!legacyFooterTag;
+
+    const outputs = [
+        buildOutput({
+            id: 'status',
+            label: '상태창',
+            type: 'block',
+            tagName: legacyTagName,
+            outputTemplate: '<{{tagName}}>\n{{content}}\n</{{tagName}}>',
+            position: 'prepend',
+        }),
+    ];
+
+    if (includeFooter) {
+        outputs.push(buildOutput({
+            id: 'menu',
+            label: '하단 마커',
+            type: 'marker',
+            tagName: legacyFooterTag,
+            outputTemplate: '<{{tagName}}>',
+            position: 'append',
+            omitWhenTagPresent: legacyOmitWhen,
+        }));
+    }
+
+    const migratedPreset = {
+        id: 'migrated-from-0.1.3',
+        name: 'Migrated (0.1.3)',
+        version: '1.0.0',
+        description: '0.1.3 의 평면 설정을 자동 변환한 프리셋입니다.',
+        outputs,
+        extraBlockTags: [],
+        blockerText,
+        auxSystemPrompt: auxSys,
+        auxUserPromptTemplate: auxUser,
+        variables: [],
+        variableSets: null,
+    };
+
+    settings.presets = [migratedPreset];
+    settings.activePresetIndex = 0;
+    settings.schemaVersion = CURRENT_SCHEMA_VERSION;
+}
+
+export function syncFlatFieldsToActivePreset(settings) {
+    if (!settings || typeof settings !== 'object') {
+        return;
+    }
+
+    const idx = Number.isInteger(settings.activePresetIndex) ? settings.activePresetIndex : 0;
+    const preset = Array.isArray(settings.presets) ? settings.presets[idx] : null;
+
+    if (!preset || !Array.isArray(preset.outputs)) {
+        return;
+    }
+
+    if (typeof settings.mainBlockerPrompt === 'string' && settings.mainBlockerPrompt.length > 0) {
+        preset.blockerText = settings.mainBlockerPrompt;
+    }
+    if (typeof settings.auxSystemPrompt === 'string' && settings.auxSystemPrompt.length > 0) {
+        preset.auxSystemPrompt = settings.auxSystemPrompt;
+    }
+    if (typeof settings.auxUserPromptTemplate === 'string' && settings.auxUserPromptTemplate.length > 0) {
+        preset.auxUserPromptTemplate = settings.auxUserPromptTemplate;
+    }
+
+    const block = preset.outputs.find(o => o && o.type === 'block');
+    if (block && typeof settings.outputTagName === 'string' && settings.outputTagName.trim()) {
+        block.tagName = settings.outputTagName;
+    }
+
+    const wantFooter = settings.appendFooterTag !== false
+        && typeof settings.footerTagName === 'string'
+        && settings.footerTagName.trim().length > 0;
+    let marker = preset.outputs.find(o => o && o.type === 'marker');
+
+    if (wantFooter) {
+        if (!marker) {
+            marker = buildOutput({
+                id: 'menu',
+                label: '하단 마커',
+                type: 'marker',
+                tagName: settings.footerTagName,
+                outputTemplate: '<{{tagName}}>',
+                position: 'append',
+                omitWhenTagPresent: settings.omitFooterWhenTagName ?? '',
+            });
+            preset.outputs.push(marker);
+        } else {
+            marker.tagName = settings.footerTagName;
+            marker.omitWhenTagPresent = settings.omitFooterWhenTagName ?? '';
+            marker.enabled = true;
+        }
+    } else if (marker) {
+        marker.enabled = false;
+    }
+}
+
+function cloneDefaultPreset() {
+    if (typeof structuredClone === 'function') {
+        return structuredClone(DEFAULT_PRESET);
+    }
+    return JSON.parse(JSON.stringify(DEFAULT_PRESET));
+}
+
+function enrichWithLegacyFields(preset) {
+    const outputs = Array.isArray(preset?.outputs) ? preset.outputs : [];
+    const blockOutput = outputs.find(o => o && o.enabled && o.type === 'block') ?? null;
+    const markerOutput = outputs.find(o => o && o.enabled && o.type === 'marker') ?? null;
+
+    return {
+        ...preset,
+        // legacy compatibility (5c 에서 컨슈머가 outputs[] 직접 사용으로 전환되면 제거 예정)
+        tagName: blockOutput?.tagName ?? '',
+        footerTagName: markerOutput?.tagName ?? '',
+        omitFooterWhenTagName: markerOutput?.omitWhenTagPresent ?? '',
+    };
+}
+
+export function getActivePreset(settings) {
+    if (!settings || typeof settings !== 'object') {
+        return enrichWithLegacyFields(cloneDefaultPreset());
+    }
+
+    if (!Array.isArray(settings.presets) || settings.presets.length === 0) {
+        // 안전망: 마이그레이션이 어떤 이유로든 누락된 경우.
+        migrateLegacySettingsToPresets(settings);
+    }
+
+    const idx = Number.isInteger(settings.activePresetIndex) ? settings.activePresetIndex : 0;
+    const preset = (Array.isArray(settings.presets) && settings.presets[idx])
+        ? settings.presets[idx]
+        : cloneDefaultPreset();
+
+    return enrichWithLegacyFields(preset);
+}
+
+// ============================================================================
+// 5b 신규: CRUD / Validation / Import-Export / Builtin Loader
+// ============================================================================
+
+function getActivePresetRaw(settings) {
+    if (!settings || !Array.isArray(settings.presets)) {
+        return null;
+    }
+    const idx = Number.isInteger(settings.activePresetIndex) ? settings.activePresetIndex : 0;
+    return settings.presets[idx] || null;
+}
+
+function generatePresetId() {
+    const rand = Math.random().toString(36).slice(2, 6);
+    return `preset_${Date.now()}_${rand}`;
+}
+
+function findPresetIndexById(settings, id) {
+    if (!settings || !Array.isArray(settings.presets)) {
+        return -1;
+    }
+    return settings.presets.findIndex(p => p && p.id === id);
+}
+
+function assignUniqueId(settings, preset) {
+    const base = (typeof preset.id === 'string' && preset.id.trim())
+        ? preset.id
+        : generatePresetId();
+
+    if (findPresetIndexById(settings, base) < 0) {
+        preset.id = base;
+        return preset;
+    }
+
+    let candidate = base;
+    let suffix = 2;
+    while (findPresetIndexById(settings, candidate) >= 0) {
+        candidate = `${base}_${suffix}`;
+        suffix += 1;
+    }
+    preset.id = candidate;
+    return preset;
+}
+
+export function syncActivePresetToFlatFields(settings) {
+    if (!settings || typeof settings !== 'object') {
+        return;
+    }
+
+    const preset = getActivePresetRaw(settings);
+    if (!preset || !Array.isArray(preset.outputs)) {
+        return;
+    }
+
+    const block = preset.outputs.find(o => o && o.enabled !== false && o.type === 'block');
+    const marker = preset.outputs.find(o => o && o.enabled !== false && o.type === 'marker');
+
+    settings.outputTagName = block?.tagName ?? '';
+
+    if (marker) {
+        settings.footerTagName = marker.tagName ?? '';
+        settings.omitFooterWhenTagName = marker.omitWhenTagPresent ?? '';
+        settings.appendFooterTag = true;
+    } else {
+        settings.footerTagName = '';
+        settings.omitFooterWhenTagName = '';
+        settings.appendFooterTag = false;
+    }
+
+    if (typeof preset.blockerText === 'string') {
+        settings.mainBlockerPrompt = preset.blockerText;
+    }
+    if (typeof preset.auxSystemPrompt === 'string') {
+        settings.auxSystemPrompt = preset.auxSystemPrompt;
+    }
+    if (typeof preset.auxUserPromptTemplate === 'string') {
+        settings.auxUserPromptTemplate = preset.auxUserPromptTemplate;
+    }
+}
+
+export function createPreset(template = null) {
+    const skeleton = template
+        ? structuredClone(template)
+        : structuredClone(DEFAULT_PRESET);
+
+    skeleton.id = generatePresetId();
+    skeleton.name = (template && typeof template.name === 'string' && template.name.trim())
+        ? template.name
+        : 'New Preset';
+    skeleton.builtin = false;
+    return skeleton;
+}
+
+export function addPreset(settings, preset) {
+    if (!settings || typeof settings !== 'object') {
+        throw new Error('addPreset: settings is invalid');
+    }
+    if (!Array.isArray(settings.presets)) {
+        settings.presets = [];
+    }
+    if (!preset || typeof preset !== 'object') {
+        throw new Error('addPreset: preset is invalid');
+    }
+
+    assignUniqueId(settings, preset);
+    settings.presets.push(preset);
+    return settings.presets.length - 1;
+}
+
+export function listPresets(settings) {
+    return Array.isArray(settings?.presets) ? settings.presets.slice() : [];
+}
+
+export function getPresetByIndex(settings, idx) {
+    if (!settings || !Array.isArray(settings.presets)) {
+        return null;
+    }
+    if (!Number.isInteger(idx) || idx < 0 || idx >= settings.presets.length) {
+        return null;
+    }
+    return settings.presets[idx];
+}
+
+export function updatePreset(settings, idx, patcher) {
+    const preset = getPresetByIndex(settings, idx);
+    if (!preset) {
+        return false;
+    }
+
+    if (typeof patcher === 'function') {
+        patcher(preset);
+        return true;
+    }
+
+    if (patcher && typeof patcher === 'object') {
+        Object.assign(preset, patcher);
+        return true;
+    }
+
+    return false;
+}
+
+export function deletePreset(settings, idx) {
+    if (!settings || !Array.isArray(settings.presets)) {
+        return false;
+    }
+    if (settings.presets.length <= 1) {
+        // 마지막 1개 보호 (presets[] 가 비면 getActivePreset 가 fallback 으로 빠지지만
+        //  사용자 데이터 손실을 막기 위해 명시적 거부)
+        return false;
+    }
+    if (!Number.isInteger(idx) || idx < 0 || idx >= settings.presets.length) {
+        return false;
+    }
+
+    settings.presets.splice(idx, 1);
+
+    // activePresetIndex 보정
+    const lastIdx = settings.presets.length - 1;
+    if (settings.activePresetIndex > lastIdx) {
+        settings.activePresetIndex = lastIdx;
+    } else if (settings.activePresetIndex > idx) {
+        settings.activePresetIndex -= 1;
+    } else if (settings.activePresetIndex === idx) {
+        settings.activePresetIndex = 0;
+    }
+
+    syncActivePresetToFlatFields(settings);
+    return true;
+}
+
+export function clonePreset(settings, idx, newName) {
+    const src = getPresetByIndex(settings, idx);
+    if (!src) {
+        return -1;
+    }
+
+    const cloned = structuredClone(src);
+    cloned.id = generatePresetId();
+    cloned.name = (typeof newName === 'string' && newName.trim())
+        ? newName
+        : `${src.name} (copy)`;
+    cloned.builtin = false;
+
+    return addPreset(settings, cloned);
+}
+
+export function setActivePreset(settings, idx) {
+    if (!settings || !Array.isArray(settings.presets)) {
+        return false;
+    }
+    if (!Number.isInteger(idx) || idx < 0 || idx >= settings.presets.length) {
+        return false;
+    }
+
+    settings.activePresetIndex = idx;
+    syncActivePresetToFlatFields(settings);
+    return true;
+}
+
+export function validatePreset(obj) {
+    const errors = [];
+
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+        return { ok: false, errors: ['preset is not an object'] };
+    }
+
+    if (typeof obj.id !== 'string' || !obj.id.trim()) {
+        errors.push('id must be a non-empty string');
+    }
+    if (typeof obj.name !== 'string' || !obj.name.trim()) {
+        errors.push('name must be a non-empty string');
+    }
+
+    if (!Array.isArray(obj.outputs) || obj.outputs.length === 0) {
+        errors.push('outputs must be a non-empty array');
+    } else {
+        const seenIds = new Set();
+        const seenTagNames = new Set();  // 5d: tagName 중복 검사
+        obj.outputs.forEach((o, i) => {
+            if (!o || typeof o !== 'object' || Array.isArray(o)) {
+                errors.push(`outputs[${i}] is not an object`);
+                return;
+            }
+            if (typeof o.id !== 'string' || !o.id.trim()) {
+                errors.push(`outputs[${i}].id must be a non-empty string`);
+            } else if (seenIds.has(o.id)) {
+                errors.push(`outputs[${i}].id duplicate: ${o.id}`);
+            } else {
+                seenIds.add(o.id);
+            }
+            if (!VALID_OUTPUT_TYPES.includes(o.type)) {
+                errors.push(`outputs[${i}].type must be one of ${VALID_OUTPUT_TYPES.join('|')}`);
+            }
+            if (typeof o.tagName !== 'string' || !o.tagName.trim()) {
+                errors.push(`outputs[${i}].tagName must be a non-empty string`);
+            } else if (seenTagNames.has(o.tagName)) {
+                errors.push(`outputs[${i}].tagName duplicate: ${o.tagName}`);
+            } else {
+                seenTagNames.add(o.tagName);
+            }
+            if (typeof o.enabled !== 'boolean') {
+                errors.push(`outputs[${i}].enabled must be boolean`);
+            }
+            if (typeof o.outputTemplate !== 'string') {
+                errors.push(`outputs[${i}].outputTemplate must be string`);
+            }
+            if (!VALID_POSITIONS.includes(o.position)) {
+                errors.push(`outputs[${i}].position must be one of ${VALID_POSITIONS.join('|')}`);
+            }
+            if (!VALID_RESPONSE_MODES.includes(o.responseMode)) {
+                errors.push(`outputs[${i}].responseMode must be one of ${VALID_RESPONSE_MODES.join('|')}`);
+            }
+            if (o.omitWhenTagPresent !== undefined && typeof o.omitWhenTagPresent !== 'string') {
+                errors.push(`outputs[${i}].omitWhenTagPresent must be string`);
+            }
+        });
+    }
+
+    if (typeof obj.auxSystemPrompt !== 'string' || !obj.auxSystemPrompt.trim()) {
+        errors.push('auxSystemPrompt must be a non-empty string');
+    }
+    if (typeof obj.auxUserPromptTemplate !== 'string' || !obj.auxUserPromptTemplate.trim()) {
+        errors.push('auxUserPromptTemplate must be a non-empty string');
+    }
+    if (typeof obj.blockerText !== 'string' || !obj.blockerText.trim()) {
+        errors.push('blockerText must be a non-empty string');
+    }
+
+    if (obj.extraBlockTags !== undefined && !Array.isArray(obj.extraBlockTags)) {
+        errors.push('extraBlockTags must be an array if present');
+    }
+    if (obj.variables !== undefined && !Array.isArray(obj.variables)) {
+        errors.push('variables must be an array if present');
+    }
+    if (obj.variableSets !== undefined && obj.variableSets !== null && typeof obj.variableSets !== 'object') {
+        errors.push('variableSets must be an object or null if present');
+    }
+
+    return { ok: errors.length === 0, errors };
+}
+
+export function exportPresetToJSON(preset) {
+    if (!preset || typeof preset !== 'object') {
+        throw new Error('exportPresetToJSON: preset is invalid');
+    }
+    const payload = {
+        format: EXPORT_FORMAT_SINGLE,
+        formatVersion: EXPORT_FORMAT_VERSION,
+        exportedAt: new Date().toISOString(),
+        preset: structuredClone(preset),
+    };
+    return JSON.stringify(payload, null, 2);
+}
+
+export function exportAllPresetsToJSON(settings) {
+    const presets = Array.isArray(settings?.presets) ? settings.presets : [];
+    const payload = {
+        format: EXPORT_FORMAT_BUNDLE,
+        formatVersion: EXPORT_FORMAT_VERSION,
+        exportedAt: new Date().toISOString(),
+        presets: structuredClone(presets),
+    };
+    return JSON.stringify(payload, null, 2);
+}
+
+export function importPresetFromJSON(jsonString) {
+    let parsed;
+    try {
+        parsed = JSON.parse(jsonString);
+    } catch (e) {
+        return { ok: false, errors: [`JSON parse failed: ${e.message}`] };
+    }
+
+    let candidate;
+    if (parsed && parsed.format === EXPORT_FORMAT_SINGLE && parsed.preset) {
+        candidate = parsed.preset;
+    } else if (parsed && parsed.format === EXPORT_FORMAT_BUNDLE) {
+        return { ok: false, errors: ['this is a bundle, use importBundle instead'] };
+    } else if (parsed && Array.isArray(parsed.outputs)) {
+        // wrapper 없이 raw preset 직접 import
+        candidate = parsed;
+    } else {
+        return { ok: false, errors: ['unknown format -- expected a single preset'] };
+    }
+
+    const validation = validatePreset(candidate);
+    if (!validation.ok) {
+        return { ok: false, errors: validation.errors };
+    }
+
+    return { ok: true, preset: candidate, errors: [] };
+}
+
+export function importPresetsFromJSON(jsonString) {
+    let parsed;
+    try {
+        parsed = JSON.parse(jsonString);
+    } catch (e) {
+        return { ok: false, presets: [], errors: [`JSON parse failed: ${e.message}`] };
+    }
+
+    let candidates;
+    if (parsed && parsed.format === EXPORT_FORMAT_BUNDLE && Array.isArray(parsed.presets)) {
+        candidates = parsed.presets;
+    } else if (Array.isArray(parsed)) {
+        candidates = parsed;
+    } else if (parsed && parsed.format === EXPORT_FORMAT_SINGLE && parsed.preset) {
+        candidates = [parsed.preset];
+    } else {
+        return { ok: false, presets: [], errors: ['unknown format -- expected a presets bundle'] };
+    }
+
+    const validPresets = [];
+    const errors = [];
+    candidates.forEach((p, i) => {
+        const validation = validatePreset(p);
+        if (validation.ok) {
+            validPresets.push(p);
+        } else {
+            errors.push(`preset[${i}] (${p?.name || 'unnamed'}): ${validation.errors.join('; ')}`);
+        }
+    });
+
+    return {
+        ok: validPresets.length > 0,
+        presets: validPresets,
+        errors,
+    };
+}
+
+// ============================================================================
+// 5c 신규: outputs 다중 처리 helper (컨슈머가 outputs[] 직접 사용)
+// ============================================================================
+
+export function getEnabledOutputs(preset) {
+    if (!preset || !Array.isArray(preset.outputs)) return [];
+    return preset.outputs.filter(o => o && o.enabled);
+}
+
+export function collectBlockedTagNames(preset) {
+    if (!preset) return [];
+    const fromOutputs = getEnabledOutputs(preset)
+        .map(o => (typeof o.tagName === 'string' ? o.tagName.trim() : ''))
+        .filter(Boolean);
+    const extra = Array.isArray(preset.extraBlockTags)
+        ? preset.extraBlockTags.map(t => (typeof t === 'string' ? t.trim() : '')).filter(Boolean)
+        : [];
+    return Array.from(new Set([...fromOutputs, ...extra]));
+}
+
+export function findOutputById(preset, id) {
+    if (!preset || !Array.isArray(preset.outputs)) return null;
+    return preset.outputs.find(o => o && o.id === id) ?? null;
+}
+
+// ============================================================================
+// 5d 신규: variableSets / Role 결정 / JSONPatch op policy
+// ============================================================================
+
+/**
+ * 활성 Role 결정 (Q1=A 6단계 우선순위).
+ * @param {object} settings
+ * @param {object} preset
+ * @param {object} context  ST 의 getContext() 결과 (chat, chatMetadata 사용)
+ * @returns {string|null} variableSets.sets 의 키 중 하나 또는 null
+ */
+export function resolveActiveRole(settings, preset, context) {
+    if (!preset || !preset.variableSets || typeof preset.variableSets !== 'object') {
+        return null;
+    }
+    const sets = preset.variableSets.sets;
+    if (!sets || typeof sets !== 'object') {
+        return null;
+    }
+    const roleKey = preset.variableSets.key || 'Role';
+
+    // 1. settings.activeRoleOverride (디버그 강제)
+    if (typeof settings?.activeRoleOverride === 'string' && settings.activeRoleOverride.trim()) {
+        const r = settings.activeRoleOverride.trim();
+        if (Object.hasOwn(sets, r)) return r;
+    }
+
+    const cm = context?.chatMetadata;
+
+    // 2. chatMetadata.aux_model_split.activeRole (우리가 명시 저장)
+    const ourMeta = cm?.aux_model_split;
+    if (typeof ourMeta?.activeRole === 'string' && Object.hasOwn(sets, ourMeta.activeRole)) {
+        return ourMeta.activeRole;
+    }
+
+    // 3. chatMetadata.variables[roleKey] (mvu 표준 추측)
+    const cmVar = cm?.variables?.[roleKey];
+    if (typeof cmVar === 'string' && Object.hasOwn(sets, cmVar)) {
+        return cmVar;
+    }
+
+    // 4. chat[lastAssistant].extra.mvu_variables[roleKey] (mvu 비공식)
+    const chat = context?.chat;
+    if (Array.isArray(chat)) {
+        for (let i = chat.length - 1; i >= 0; i--) {
+            const m = chat[i];
+            if (!m || m.is_user || m.is_system) continue;
+            const r = m?.extra?.mvu_variables?.[roleKey];
+            if (typeof r === 'string' && Object.hasOwn(sets, r)) {
+                return r;
+            }
+            break;  // 첫 마지막 assistant 만 검사
+        }
+    }
+
+    // 5. preset.variableSets.defaultRole
+    if (typeof preset.variableSets.defaultRole === 'string'
+        && Object.hasOwn(sets, preset.variableSets.defaultRole)) {
+        return preset.variableSets.defaultRole;
+    }
+
+    // 6. 'student' 또는 sets 의 첫 키
+    const keys = Object.keys(sets);
+    if (keys.includes('student')) return 'student';
+    if (keys.length > 0) return keys[0];
+    return null;
+}
+
+export function getActiveVariableFields(preset, role) {
+    if (!preset?.variableSets?.sets || !role) return [];
+    const fields = preset.variableSets.sets[role];
+    return Array.isArray(fields) ? fields.slice() : [];
+}
+
+const DEFAULT_JSONPATCH_OP_POLICY = Object.freeze({
+    acceptedOps: Object.freeze(['add', 'remove', 'replace', 'move', 'copy', 'test', 'delta']),
+    passthrough: true,
+});
+
+export function getJsonPatchOpPolicy(preset) {
+    const fromPreset = preset?.jsonPatchOpPolicy;
+    if (fromPreset && typeof fromPreset === 'object') {
+        return {
+            acceptedOps: Array.isArray(fromPreset.acceptedOps)
+                ? fromPreset.acceptedOps.slice()
+                : DEFAULT_JSONPATCH_OP_POLICY.acceptedOps.slice(),
+            passthrough: typeof fromPreset.passthrough === 'boolean'
+                ? fromPreset.passthrough
+                : DEFAULT_JSONPATCH_OP_POLICY.passthrough,
+        };
+    }
+    return {
+        acceptedOps: DEFAULT_JSONPATCH_OP_POLICY.acceptedOps.slice(),
+        passthrough: DEFAULT_JSONPATCH_OP_POLICY.passthrough,
+    };
+}
+
+// ============================================================================
+// 5b: builtin loader (위 5c helper 들이 import 가능하도록 위치만 유지)
+// ============================================================================
+
+export async function ensureBuiltinPresetsLoaded(settings, extensionFolderPath) {
+    if (!settings || typeof settings !== 'object') {
+        return false;
+    }
+    if (settings.builtinPresetsImported === true) {
+        return false;
+    }
+
+    const builtinFiles = ['dh-29.json', 'eden-univ.json'];
+    let added = 0;
+
+    for (const filename of builtinFiles) {
+        try {
+            const url = `${extensionFolderPath}/presets/${filename}`;
+            const response = await fetch(url);
+            if (!response.ok) {
+                console.warn(`[AuxSplit] builtin preset fetch failed: ${url} (${response.status})`);
+                continue;
+            }
+            const obj = await response.json();
+            const validation = validatePreset(obj);
+            if (!validation.ok) {
+                console.warn(`[AuxSplit] builtin preset invalid: ${filename}`, validation.errors);
+                continue;
+            }
+            if (findPresetIndexById(settings, obj.id) >= 0) {
+                continue;  // 이미 들어 있음
+            }
+            addPreset(settings, obj);
+            added += 1;
+        } catch (error) {
+            console.warn(`[AuxSplit] builtin preset error: ${filename}`, error);
+        }
+    }
+
+    settings.builtinPresetsImported = true;
+    return added > 0;
 }

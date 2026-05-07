@@ -2,9 +2,14 @@ import {
     DEFAULT_AUX_SYSTEM_PROMPT,
     DEFAULT_AUX_USER_PROMPT_TEMPLATE,
     DEFAULT_MAIN_BLOCKER_PROMPT,
-    getDh29Preset,
+    migrateLegacySettingsToPresets,
+    syncFlatFieldsToActivePreset,
+    ensureBuiltinPresetsLoaded,
 } from './preset-manager.js';
-import { debugLog, escapeHtml, getContext, notifyInfo } from './utils.js';
+import * as PresetMgr from './preset-manager.js';
+import { debugLog, escapeHtml, getContext, notifyError, notifyInfo, notifyWarning } from './utils.js';
+
+const { getActivePreset } = PresetMgr;
 
 export const MODULE_NAME = 'aux_model_split';
 const LOCAL_STORAGE_KEY = `${MODULE_NAME}_settings_backup`;
@@ -25,6 +30,16 @@ const DEFAULT_SETTINGS = Object.freeze({
     silentFallback: true,
     debug: false,
     lastAuxOutput: '',
+    // 5a 신규: 새 데이터 모델 슬롯. initSettings 의 마이그레이션이 schemaVersion 을 2 로 끌어올리고 presets[0] 를 채운다.
+    schemaVersion: 0,
+    activePresetIndex: 0,
+    presets: [],
+    // 5b 신규: 기본 프리셋(dh-29, eden-univ) 1회 자동 로드 추적.
+    builtinPresetsImported: false,
+    // 5d 신규: variableSets Role 강제 override (디버그용, 빈 문자열이면 자동 결정)
+    activeRoleOverride: '',
+    // Phase 6 신규: Import 시 가져온 프리셋을 즉시 활성화할지
+    importActivateImmediately: false,
 });
 
 export function getSettings() {
@@ -33,28 +48,65 @@ export function getSettings() {
         return structuredClone(DEFAULT_SETTINGS);
     }
 
-    const existing = context.extensionSettings[MODULE_NAME] ?? {};
-    const backup = readSettingsBackup();
-    context.extensionSettings[MODULE_NAME] = {
-        ...structuredClone(DEFAULT_SETTINGS),
-        ...existing,
-        ...backup,
-    };
+    let settings = context.extensionSettings[MODULE_NAME];
+    const isFreshObject = !settings || typeof settings !== 'object' || Array.isArray(settings);
 
-    return context.extensionSettings[MODULE_NAME];
+    if (isFreshObject) {
+        // 첫 호출: backup + 기본값으로 한 번만 빌드. 이후 같은 reference 유지.
+        const backup = readSettingsBackup();
+        settings = {
+            ...structuredClone(DEFAULT_SETTINGS),
+            ...backup,
+        };
+        context.extensionSettings[MODULE_NAME] = settings;
+    } else {
+        // 후속 호출: 누락 필드만 채우고 기존 reference 보존.
+        // 새 객체를 매번 만들면 비동기 코드가 stale reference 를 잡게 되어
+        // ensureBuiltinPresetsLoaded 같은 비동기 변경이 손실된다.
+        const defaults = structuredClone(DEFAULT_SETTINGS);
+        for (const key of Object.keys(defaults)) {
+            if (!Object.hasOwn(settings, key)) {
+                settings[key] = defaults[key];
+            }
+        }
+    }
+
+    return settings;
+}
+
+function getExtensionFolderPath() {
+    try {
+        // settings.js -> ../  = aux-model-split 확장 폴더 root
+        const url = new URL('..', import.meta.url);
+        return url.href.replace(/\/$/, '');
+    } catch (error) {
+        console.warn('[AuxSplit] getExtensionFolderPath fallback', error);
+        return 'scripts/extensions/third-party/aux-model-split';
+    }
 }
 
 export function initSettings() {
     const settings = getSettings();
-    const preset = getDh29Preset(settings);
-    settings.outputTagName ||= preset.tagName;
-    settings.footerTagName ||= preset.footerTagName;
-    settings.omitFooterWhenTagName ||= preset.omitFooterWhenTagName;
+    settings.outputTagName ||= '상태창';
+    settings.footerTagName ||= '메뉴';
+    settings.omitFooterWhenTagName ||= 'd-0';
     settings.appendFooterTag ??= true;
     settings.mainBlockerPrompt ||= DEFAULT_MAIN_BLOCKER_PROMPT;
     settings.auxSystemPrompt ||= DEFAULT_AUX_SYSTEM_PROMPT;
     settings.auxUserPromptTemplate ||= DEFAULT_AUX_USER_PROMPT_TEMPLATE;
+    migrateLegacySettingsToPresets(settings);
     saveSettings();
+
+    // 5b: 기본 프리셋(dh-29, eden-univ) 1회 자동 로드. fire-and-forget.
+    const folderPath = getExtensionFolderPath();
+    void ensureBuiltinPresetsLoaded(settings, folderPath).then((added) => {
+        if (added) {
+            saveSettings({ immediate: true });
+            console.log('[AuxSplit] Builtin presets loaded');
+        }
+    }).catch((error) => {
+        console.warn('[AuxSplit] Builtin preset load failed', error);
+    });
 }
 
 export function registerSettingsMenuButton() {
@@ -107,6 +159,7 @@ function saveSettings({ immediate = false } = {}) {
     const context = getContext();
     const settings = context?.extensionSettings?.[MODULE_NAME];
     if (settings) {
+        syncFlatFieldsToActivePreset(settings);
         writeSettingsBackup(settings);
     }
 
@@ -194,6 +247,91 @@ function findSettingsContainer() {
     return dialog.querySelector('#aux-model-split-dialog-body') ?? document.body;
 }
 
+// ============================================================================
+// Phase 6 신규 helper: 다운로드 / outputs 요약 / 날짜 / Import 라우팅
+// ============================================================================
+
+function downloadJsonFile(content, filename) {
+    try {
+        const blob = new Blob([content], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        return true;
+    } catch (error) {
+        console.error('[AuxSplit] downloadJsonFile failed', error);
+        notifyError('파일 다운로드 실패: ' + (error?.message ?? error));
+        return false;
+    }
+}
+
+function formatOutputsSummary(preset) {
+    const enabled = (preset?.outputs ?? []).filter(o => o && o.enabled);
+    if (enabled.length === 0) return '(no enabled outputs)';
+    return 'outputs: ' + enabled.map(o => o.id).join(', ');
+}
+
+function ymdString() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+function sanitizeFilename(name) {
+    return String(name ?? '').replace(/[^\w\-가-힣.]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'preset';
+}
+
+function handleImportText(text, settings) {
+    let parsed;
+    try {
+        parsed = JSON.parse(text);
+    } catch (e) {
+        return { ok: false, message: 'JSON 파싱 실패: ' + e.message };
+    }
+
+    const isBundle = parsed && parsed.format === 'aux-model-split-presets-bundle';
+
+    if (isBundle) {
+        const result = PresetMgr.importPresetsFromJSON(text);
+        if (!result.ok || result.presets.length === 0) {
+            return { ok: false, message: 'Bundle import 실패: ' + (result.errors?.join('; ') || 'no valid presets') };
+        }
+        const indices = [];
+        for (const p of result.presets) {
+            indices.push(PresetMgr.addPreset(settings, p));
+        }
+        if (settings.importActivateImmediately && indices.length > 0) {
+            PresetMgr.setActivePreset(settings, indices[indices.length - 1]);
+        }
+        return {
+            ok: true,
+            message: `Bundle import 성공: ${indices.length}개 프리셋 추가${result.errors?.length ? ` (${result.errors.length}개 reject)` : ''}`,
+            indices,
+        };
+    }
+
+    const result = PresetMgr.importPresetFromJSON(text);
+    if (!result.ok) {
+        return { ok: false, message: 'Import 실패: ' + (result.errors?.join('; ') || 'unknown') };
+    }
+    const idx = PresetMgr.addPreset(settings, result.preset);
+    if (settings.importActivateImmediately) {
+        PresetMgr.setActivePreset(settings, idx);
+    }
+    return {
+        ok: true,
+        message: `Import 성공: idx=${idx}, id=${result.preset.id}`,
+        indices: [idx],
+    };
+}
+
 function getConnectionProfiles() {
     const context = getContext();
     const profiles = context?.extensionSettings?.connectionManager?.profiles;
@@ -254,7 +392,7 @@ function getSelectedProfileSummary(settings, profiles) {
 
 export function renderSettings() {
     const settings = getSettings();
-    const preset = getDh29Preset(settings);
+    const preset = getActivePreset(settings);
     const container = findSettingsContainer();
     const profiles = getConnectionProfiles();
     debugLog(settings, `Connection profiles count: ${profiles.length}`);
@@ -309,9 +447,31 @@ export function renderSettings() {
         </label>
 
         <div class="aux-split-preset">
-            <b>현재 프리셋</b>
-            <code>${escapeHtml(preset.name)}</code>
-            <small>분리 태그: &lt;${escapeHtml(preset.tagName)}&gt;</small>
+            <b>활성 프리셋</b>
+            <select id="aux-split-preset-select" class="text_pole">
+                ${PresetMgr.listPresets(settings).map((p, i) => `
+                    <option value="${i}" ${i === settings.activePresetIndex ? 'selected' : ''}>${escapeHtml(p?.name || `(no-name #${i})`)}${p?.builtin ? ' [builtin]' : ''}</option>
+                `).join('')}
+            </select>
+            <small class="aux-split-preset-summary">${escapeHtml(formatOutputsSummary(preset))}</small>
+
+            <div class="aux-split-preset-actions">
+                <button id="aux-split-clone" type="button" class="menu_button">복제</button>
+                <button id="aux-split-rename" type="button" class="menu_button">이름 변경</button>
+                <button id="aux-split-delete" type="button" class="menu_button">삭제</button>
+            </div>
+
+            <div class="aux-split-preset-actions">
+                <button id="aux-split-export" type="button" class="menu_button">JSON 내보내기</button>
+                <button id="aux-split-export-all" type="button" class="menu_button">전체 JSON 내보내기</button>
+                <button id="aux-split-import-trigger" type="button" class="menu_button">JSON 가져오기</button>
+                <input id="aux-split-import-file" type="file" accept="application/json,.json" style="display:none">
+            </div>
+
+            <label class="checkbox_label aux-split-row aux-split-checkbox-row">
+                <input id="aux-split-import-activate" type="checkbox" ${settings.importActivateImmediately ? 'checked' : ''}>
+                <span>가져온 프리셋 즉시 활성화</span>
+            </label>
         </div>
 
         <div class="aux-split-editor">
@@ -457,6 +617,136 @@ export function renderSettings() {
     bindInput(root, '#aux-split-show-last', 'click', () => {
         const output = settings.lastAuxOutput || '아직 저장된 보조 응답이 없습니다.';
         notifyInfo(output);
+    });
+
+    // ========================================================================
+    // Phase 6: 활성 프리셋 드롭다운 + 클론/이름변경/삭제 + JSON I/O
+    // ========================================================================
+
+    bindInput(root, '#aux-split-preset-select', 'change', (event) => {
+        const idx = Number(event.target.value);
+        if (!Number.isInteger(idx)) return;
+        const ok = PresetMgr.setActivePreset(settings, idx);
+        if (ok) {
+            saveSettings({ immediate: true });
+            renderSettings();
+        }
+    });
+
+    bindInput(root, '#aux-split-clone', 'click', () => {
+        const activeIdx = settings.activePresetIndex;
+        const newIdx = PresetMgr.clonePreset(settings, activeIdx);
+        if (newIdx < 0) {
+            notifyError('복제 실패: 활성 프리셋을 찾을 수 없습니다.');
+            return;
+        }
+        saveSettings({ immediate: true });
+        renderSettings();
+        notifyInfo(`프리셋 복제 완료 (idx=${newIdx})`);
+    });
+
+    bindInput(root, '#aux-split-rename', 'click', () => {
+        const active = PresetMgr.getPresetByIndex(settings, settings.activePresetIndex);
+        if (!active) {
+            notifyError('이름 변경 실패: 활성 프리셋을 찾을 수 없습니다.');
+            return;
+        }
+        const newName = window.prompt('새 프리셋 이름:', active.name || '');
+        if (newName === null) return;  // 취소
+        const trimmed = newName.trim();
+        if (!trimmed) {
+            notifyError('이름 변경 실패: 이름이 비어 있습니다.');
+            return;
+        }
+        const ok = PresetMgr.updatePreset(settings, settings.activePresetIndex, { name: trimmed });
+        if (ok) {
+            saveSettings({ immediate: true });
+            renderSettings();
+            notifyInfo(`이름 변경 완료: ${trimmed}`);
+        }
+    });
+
+    bindInput(root, '#aux-split-delete', 'click', () => {
+        const active = PresetMgr.getPresetByIndex(settings, settings.activePresetIndex);
+        if (!active) {
+            notifyError('삭제 실패: 활성 프리셋을 찾을 수 없습니다.');
+            return;
+        }
+        const confirmed = window.confirm(`정말 "${active.name}" 프리셋을 삭제하시겠습니까?`);
+        if (!confirmed) return;
+        const ok = PresetMgr.deletePreset(settings, settings.activePresetIndex);
+        if (!ok) {
+            notifyError('삭제 실패: 마지막 1개 프리셋은 삭제할 수 없습니다.');
+            return;
+        }
+        saveSettings({ immediate: true });
+        renderSettings();
+        notifyInfo('프리셋 삭제 완료');
+    });
+
+    bindInput(root, '#aux-split-export', 'click', () => {
+        const active = PresetMgr.getPresetByIndex(settings, settings.activePresetIndex);
+        if (!active) {
+            notifyError('내보내기 실패: 활성 프리셋을 찾을 수 없습니다.');
+            return;
+        }
+        try {
+            const json = PresetMgr.exportPresetToJSON(active);
+            const filename = `${sanitizeFilename(active.id)}-${ymdString()}.json`;
+            if (downloadJsonFile(json, filename)) {
+                notifyInfo(`내보내기 완료: ${filename}`);
+            }
+        } catch (error) {
+            console.error('[AuxSplit] export failed', error);
+            notifyError('내보내기 실패: ' + (error?.message ?? error));
+        }
+    });
+
+    bindInput(root, '#aux-split-export-all', 'click', () => {
+        try {
+            const json = PresetMgr.exportAllPresetsToJSON(settings);
+            const filename = `aux-model-split-presets-${ymdString()}.json`;
+            if (downloadJsonFile(json, filename)) {
+                notifyInfo(`전체 내보내기 완료: ${filename}`);
+            }
+        } catch (error) {
+            console.error('[AuxSplit] exportAll failed', error);
+            notifyError('전체 내보내기 실패: ' + (error?.message ?? error));
+        }
+    });
+
+    bindInput(root, '#aux-split-import-trigger', 'click', () => {
+        const input = root.querySelector('#aux-split-import-file');
+        if (input instanceof HTMLInputElement) input.click();
+    });
+
+    bindInput(root, '#aux-split-import-file', 'change', (event) => {
+        const target = event.target;
+        const file = target?.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const text = String(e.target?.result ?? '');
+            const result = handleImportText(text, settings);
+            if (result.ok) {
+                saveSettings({ immediate: true });
+                renderSettings();
+                notifyInfo(result.message);
+            } else {
+                notifyError(result.message);
+            }
+        };
+        reader.onerror = () => {
+            notifyError('파일 읽기 실패: ' + (reader.error?.message ?? 'unknown'));
+        };
+        reader.readAsText(file);
+        // 같은 파일 재선택 가능하도록 reset
+        target.value = '';
+    });
+
+    bindInput(root, '#aux-split-import-activate', 'change', (event) => {
+        settings.importActivateImmediately = Boolean(event.target.checked);
+        saveSettings({ immediate: true });
     });
 
     window.addEventListener('beforeunload', () => saveSettings({ immediate: true }), { once: true });

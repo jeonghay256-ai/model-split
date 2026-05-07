@@ -1,10 +1,11 @@
 import { debugLog } from './utils.js';
-
-const SKIPPED_TYPES = new Set(['quiet', 'impersonate']);
+import { collectBlockedTagNames, getEnabledOutputs } from './preset-manager.js';
+import { evaluateSuppression } from './suppression.js';
 
 export function injectStatusBlocker(chat, type, preset, settings) {
-    if (SKIPPED_TYPES.has(type)) {
-        debugLog(settings, `Interceptor skipped for generation type: ${type}`);
+    const suppression = evaluateSuppression(type);
+    if (suppression.suppress) {
+        debugLog(settings, `Interceptor suppressed: ${suppression.reason}`);
         return;
     }
 
@@ -13,18 +14,34 @@ export function injectStatusBlocker(chat, type, preset, settings) {
         return;
     }
 
+    const blockedTags = collectBlockedTagNames(preset);
+    if (blockedTags.length === 0) {
+        debugLog(settings, 'Interceptor skipped: no enabled outputs');
+        return;
+    }
+
+    const blockedTagsList = blockedTags.map(t => `<${t}>`).join(', ');
+    const blockedTagOpenList = blockedTags.map(t => `<${t}>`).join('\n');
+    const enabledOutputs = getEnabledOutputs(preset);
+    const firstBlock = enabledOutputs.find(o => o.type === 'block');
+    const firstMarker = enabledOutputs.find(o => o.type === 'marker');
+
+    const noteText = String(preset.blockerText ?? '')
+        .replaceAll('{{blockedTagsList}}', blockedTagsList)
+        .replaceAll('{{blockedTagOpenList}}', blockedTagOpenList)
+        .replaceAll('{{tagName}}', firstBlock?.tagName ?? '')
+        .replaceAll('{{footerTagName}}', firstMarker?.tagName ?? '')
+        .replaceAll('{{omitFooterWhenTagName}}', firstMarker?.omitWhenTagPresent ?? '');
+
     const systemNote = {
         is_user: false,
         is_system: true,
         name: 'Aux Model Split',
         send_date: Date.now(),
-        mes: preset.blockerText
-            .replaceAll('{{tagName}}', preset.tagName)
-            .replaceAll('{{footerTagName}}', preset.footerTagName || '')
-            .replaceAll('{{omitFooterWhenTagName}}', preset.omitFooterWhenTagName || ''),
+        mes: noteText,
     };
 
     const insertAt = Math.max(0, chat.length - 1);
     chat.splice(insertAt, 0, systemNote);
-    debugLog(settings, `Status blocker injected for <${preset.tagName}>`);
+    debugLog(settings, `Status blocker injected for: ${blockedTagsList}`);
 }
