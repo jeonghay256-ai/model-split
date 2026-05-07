@@ -51,6 +51,24 @@ function shouldSkipReceivedMessage(message) {
     return false;
 }
 
+function hasPriorUserMessage(chat, messageId) {
+    if (!Array.isArray(chat) || !Number.isInteger(messageId) || messageId <= 0) {
+        return false;
+    }
+
+    for (let i = messageId - 1; i >= 0; i--) {
+        const message = chat[i];
+        if (!message || message.is_system) {
+            continue;
+        }
+        if (message.is_user) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function emitUpdateComplete(context, payload, settings) {
     const eventSource = context?.eventSource;
     if (!eventSource?.emit) return;
@@ -84,6 +102,11 @@ async function handleMessageReceived(eventData) {
 
     if (shouldSkipReceivedMessage(message)) {
         debugLog(settings, 'MESSAGE_RECEIVED skipped: not a normal character message');
+        return;
+    }
+
+    if (!hasPriorUserMessage(chat, messageId)) {
+        debugLog(settings, `MESSAGE_RECEIVED skipped: no prior user message (likely greeting), messageId=${messageId}`);
         return;
     }
 
