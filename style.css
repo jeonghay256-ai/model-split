@@ -251,6 +251,12 @@ body.aux-split-dialog-open {
     gap: 8px;
 }
 
+.aux-split-output-label {
+    flex: 1 1 160px;
+    min-width: 0;
+    font-weight: 700;
+}
+
 .aux-split-output-card-actions {
     display: flex;
     flex-wrap: wrap;
@@ -291,6 +297,16 @@ body.aux-split-dialog-open {
 
 .aux-split-output-grid span {
     opacity: 0.72;
+}
+
+.aux-split-output-grid label {
+    opacity: 0.72;
+}
+
+.aux-split-output-grid input,
+.aux-split-output-grid select {
+    width: 100%;
+    min-width: 0;
 }
 
 .aux-split-output-grid code {

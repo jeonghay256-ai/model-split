@@ -306,44 +306,8 @@ export function syncFlatFieldsToActivePreset(settings) {
         preset.auxUserPromptTemplate = settings.auxUserPromptTemplate;
     }
 
-    const block = preset.outputs.find(o => o && o.type === 'block');
-    if (block && typeof settings.outputTagName === 'string' && settings.outputTagName.trim()) {
-        block.tagName = settings.outputTagName;
-    }
-
-    if (typeof settings._auxSplitFooterToggleChanged === 'boolean') {
-        preset._footerToggleChanged = settings._auxSplitFooterToggleChanged;
-        delete settings._auxSplitFooterToggleChanged;
-    }
-
-    const wantFooter = settings.appendFooterTag !== false
-        && typeof settings.footerTagName === 'string'
-        && settings.footerTagName.trim().length > 0;
-    let marker = preset.outputs.find(o => o && o.type === 'marker');
-
-    if (wantFooter) {
-        if (!marker) {
-            marker = buildOutput({
-                id: 'menu',
-                label: '하단 마커',
-                type: 'marker',
-                tagName: settings.footerTagName,
-                outputTemplate: '<{{tagName}}>',
-                position: 'append',
-                omitWhenTagPresent: settings.omitFooterWhenTagName ?? '',
-            });
-            preset.outputs.push(marker);
-        } else {
-            marker.tagName = settings.footerTagName;
-            marker.omitWhenTagPresent = settings.omitFooterWhenTagName ?? '';
-            if (preset._footerToggleChanged) {
-                marker.enabled = true;
-                preset._footerToggleChanged = false;
-            }
-        }
-    } else if (marker) {
-        marker.enabled = false;
-    }
+    // outputs[] is edited directly in the settings UI. Do not mirror legacy flat
+    // tag fields back into outputs here, or card edits get overwritten on save.
 }
 
 function cloneDefaultPreset() {
