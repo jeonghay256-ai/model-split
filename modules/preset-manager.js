@@ -311,6 +311,11 @@ export function syncFlatFieldsToActivePreset(settings) {
         block.tagName = settings.outputTagName;
     }
 
+    if (typeof settings._auxSplitFooterToggleChanged === 'boolean') {
+        preset._footerToggleChanged = settings._auxSplitFooterToggleChanged;
+        delete settings._auxSplitFooterToggleChanged;
+    }
+
     const wantFooter = settings.appendFooterTag !== false
         && typeof settings.footerTagName === 'string'
         && settings.footerTagName.trim().length > 0;
@@ -331,7 +336,10 @@ export function syncFlatFieldsToActivePreset(settings) {
         } else {
             marker.tagName = settings.footerTagName;
             marker.omitWhenTagPresent = settings.omitFooterWhenTagName ?? '';
-            marker.enabled = true;
+            if (preset._footerToggleChanged) {
+                marker.enabled = true;
+                preset._footerToggleChanged = false;
+            }
         }
     } else if (marker) {
         marker.enabled = false;

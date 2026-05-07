@@ -679,6 +679,7 @@ export function renderSettings() {
 
     bindInput(root, '#aux-split-append-footer', 'change', (event) => {
         settings.appendFooterTag = Boolean(event.target.checked);
+        settings._auxSplitFooterToggleChanged = true;
         saveSettings({ immediate: true });
     });
 
