@@ -3,6 +3,7 @@ import {
     getEnabledOutputs,
     resolveActiveRole,
     getActiveVariableFields,
+    buildPromptSectionsText,
 } from './preset-manager.js';
 
 function getCharacterName(context) {
@@ -76,7 +77,7 @@ export function buildAuxPrompt({ mainResponse, context, settings, preset }) {
         statusFieldsLines,
     };
 
-    const systemPrompt = applyTemplate(preset.auxSystemPrompt, variables);
+    const systemPrompt = applyTemplate(buildPromptSectionsText(preset, activeRole || ''), variables);
     const userPrompt = applyTemplate(preset.auxUserPromptTemplate, variables);
 
     return { systemPrompt, userPrompt };

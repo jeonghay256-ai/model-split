@@ -40,6 +40,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     activeRoleOverride: '',
     // Phase 6 신규: Import 시 가져온 프리셋을 즉시 활성화할지
     importActivateImmediately: false,
+    activePromptSectionIndex: 0,
 });
 
 export function getSettings() {
@@ -371,6 +372,31 @@ function renderOutputsList(preset) {
     }).join('');
 }
 
+function renderPromptSectionOptions(preset, activeIndex) {
+    const sections = PresetMgr.ensurePromptSections(preset);
+    return sections.map((section, index) => {
+        const status = section.enabled === false ? 'off' : 'on';
+        const order = Number(section.order) || 0;
+        const label = `${section.name || `Section ${index + 1}`} [${status}] (${order})`;
+        return `<option value="${index}" ${index === activeIndex ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    }).join('');
+}
+
+function getActivePromptSection(settings, preset) {
+    const sections = PresetMgr.ensurePromptSections(preset);
+    if (sections.length === 0) {
+        return { section: null, index: -1 };
+    }
+
+    let index = Number.isInteger(settings.activePromptSectionIndex) ? settings.activePromptSectionIndex : 0;
+    if (index < 0 || index >= sections.length) {
+        index = 0;
+        settings.activePromptSectionIndex = 0;
+    }
+
+    return { section: sections[index], index };
+}
+
 function ymdString() {
     const d = new Date();
     const y = d.getFullYear();
@@ -494,6 +520,13 @@ function sanitizeTagName(value) {
         .trim();
 }
 
+function parseCsvList(value) {
+    return String(value ?? '')
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+}
+
 function getOutputByIndex(settings, outputIndex) {
     const active = PresetMgr.getPresetByIndex(settings, settings.activePresetIndex);
     return active?.outputs?.[outputIndex] ?? null;
@@ -580,6 +613,7 @@ function bindOutputSelect(root, selector, fieldName, settings) {
 export function renderSettings() {
     const settings = getSettings();
     const preset = getActivePreset(settings);
+    const { section: activePromptSection, index: activePromptSectionIndex } = getActivePromptSection(settings, preset);
     const container = findSettingsContainer();
     const profiles = getConnectionProfiles();
     debugLog(settings, `Connection profiles count: ${profiles.length}`);
@@ -687,11 +721,53 @@ export function renderSettings() {
                 <small class="aux-split-help">메인 모델에게 해당 구조화 출력을 만들지 말라고 알려주는 지시입니다.</small>
             </label>
 
-            <label class="aux-split-textarea-field">
-                <span>보조 출력 프롬프트</span>
-                <textarea id="aux-split-system-prompt" class="text_pole" rows="14">${escapeHtml(settings.auxSystemPrompt)}</textarea>
-                <small class="aux-split-help">월드인포/작노에 있던 상태창 형식 지시를 여기에 옮겨 넣으세요.</small>
-            </label>
+            <section class="aux-split-prompt-sections">
+                <div class="aux-split-section-title">
+                    <b>보조 출력 프롬프트 섹션</b>
+                    <small>프리셋 안에서 여러 규칙 조각을 나누어 관리합니다.</small>
+                </div>
+
+                <div class="aux-split-prompt-section-toolbar">
+                    <select id="aux-split-prompt-section-select" class="text_pole">
+                        ${renderPromptSectionOptions(preset, activePromptSectionIndex)}
+                    </select>
+                    <button id="aux-split-add-prompt-section" type="button" class="menu_button">섹션 추가</button>
+                    <button id="aux-split-clone-prompt-section" type="button" class="menu_button">복제</button>
+                    <button id="aux-split-delete-prompt-section" type="button" class="menu_button">삭제</button>
+                </div>
+
+                <div class="aux-split-prompt-section-meta">
+                    <label>
+                        <span>이름</span>
+                        <input id="aux-split-prompt-section-name" class="text_pole" type="text" value="${escapeHtml(activePromptSection?.name || '')}">
+                    </label>
+                    <label>
+                        <span>순서</span>
+                        <input id="aux-split-prompt-section-order" class="text_pole" type="number" step="10" value="${Number(activePromptSection?.order) || 100}">
+                    </label>
+                    <label class="checkbox_label aux-split-row aux-split-checkbox-row">
+                        <input id="aux-split-prompt-section-enabled" type="checkbox" ${activePromptSection?.enabled !== false ? 'checked' : ''}>
+                        <span>활성화</span>
+                    </label>
+                </div>
+
+                <div class="aux-split-prompt-section-meta">
+                    <label>
+                        <span>연결 output ID</span>
+                        <input id="aux-split-prompt-section-targets" class="text_pole" type="text" value="${escapeHtml((activePromptSection?.targetOutputs || []).join(', '))}" placeholder="status, choices, updateVariable">
+                    </label>
+                    <label>
+                        <span>Role 필터</span>
+                        <input id="aux-split-prompt-section-roles" class="text_pole" type="text" value="${escapeHtml((activePromptSection?.roleFilter || []).join(', '))}" placeholder="student, faculty, outsider">
+                    </label>
+                </div>
+
+                <label class="aux-split-textarea-field">
+                    <span>섹션 내용</span>
+                    <textarea id="aux-split-prompt-section-content" class="text_pole" rows="14">${escapeHtml(activePromptSection?.content || '')}</textarea>
+                    <small class="aux-split-help">월드인포/작가노트에 있던 상태창, 선택지, 변수 규칙을 섹션별로 옮겨 넣으세요. 보조 호출 시 활성 섹션들이 순서대로 합쳐집니다.</small>
+                </label>
+            </section>
 
             <label class="aux-split-textarea-field">
                 <span>보조 유저 프롬프트 템플릿</span>
@@ -755,9 +831,118 @@ export function renderSettings() {
         saveSettings();
     });
 
-    bindPromptTextarea(root, '#aux-split-system-prompt', (event) => {
-        settings.auxSystemPrompt = event.target.value;
-        saveSettings();
+    bindInput(root, '#aux-split-prompt-section-select', 'change', (event) => {
+        settings.activePromptSectionIndex = Number(event.target.value) || 0;
+        saveSettings({ immediate: true });
+        renderSettings();
+    });
+
+    const updateActivePromptSection = (patch) => {
+        const active = PresetMgr.getPresetByIndex(settings, settings.activePresetIndex);
+        const sections = PresetMgr.ensurePromptSections(active);
+        const index = Number.isInteger(settings.activePromptSectionIndex) ? settings.activePromptSectionIndex : 0;
+        const section = sections[index];
+        if (!section) {
+            notifyError('프롬프트 섹션을 찾을 수 없습니다.');
+            return false;
+        }
+        Object.assign(section, patch);
+        active.auxSystemPrompt = PresetMgr.buildPromptSectionsText(active);
+        settings.auxSystemPrompt = active.auxSystemPrompt;
+        return true;
+    };
+
+    bindPromptTextarea(root, '#aux-split-prompt-section-content', (event) => {
+        if (updateActivePromptSection({ content: event.target.value })) {
+            saveSettings();
+        }
+    });
+
+    bindInput(root, '#aux-split-prompt-section-name', 'change', (event) => {
+        const name = event.target.value.trim() || 'Prompt Section';
+        if (updateActivePromptSection({ name })) {
+            saveSettings({ immediate: true });
+            renderSettings();
+        }
+    });
+
+    bindInput(root, '#aux-split-prompt-section-order', 'change', (event) => {
+        if (updateActivePromptSection({ order: Number(event.target.value) || 100 })) {
+            saveSettings({ immediate: true });
+            renderSettings();
+        }
+    });
+
+    bindInput(root, '#aux-split-prompt-section-enabled', 'change', (event) => {
+        if (updateActivePromptSection({ enabled: Boolean(event.target.checked) })) {
+            saveSettings({ immediate: true });
+            renderSettings();
+        }
+    });
+
+    bindInput(root, '#aux-split-prompt-section-targets', 'change', (event) => {
+        if (updateActivePromptSection({ targetOutputs: parseCsvList(event.target.value) })) {
+            saveSettings({ immediate: true });
+            renderSettings();
+        }
+    });
+
+    bindInput(root, '#aux-split-prompt-section-roles', 'change', (event) => {
+        if (updateActivePromptSection({ roleFilter: parseCsvList(event.target.value) })) {
+            saveSettings({ immediate: true });
+            renderSettings();
+        }
+    });
+
+    bindInput(root, '#aux-split-add-prompt-section', 'click', () => {
+        const name = window.prompt('새 프롬프트 섹션 이름:', 'New Prompt Section');
+        if (name === null) return;
+        const idx = PresetMgr.addPromptSection(settings, settings.activePresetIndex, {
+            name: name.trim() || 'New Prompt Section',
+        });
+        if (idx < 0) {
+            notifyError('프롬프트 섹션 추가에 실패했습니다.');
+            return;
+        }
+        settings.activePromptSectionIndex = idx;
+        saveSettings({ immediate: true });
+        renderSettings();
+        notifyInfo('프롬프트 섹션을 추가했습니다.');
+    });
+
+    bindInput(root, '#aux-split-clone-prompt-section', 'click', () => {
+        const idx = PresetMgr.clonePromptSection(settings, settings.activePresetIndex, settings.activePromptSectionIndex || 0);
+        if (idx < 0) {
+            notifyError('프롬프트 섹션 복제에 실패했습니다.');
+            return;
+        }
+        settings.activePromptSectionIndex = idx;
+        saveSettings({ immediate: true });
+        renderSettings();
+        notifyInfo('프롬프트 섹션을 복제했습니다.');
+    });
+
+    bindInput(root, '#aux-split-delete-prompt-section', 'click', () => {
+        const active = PresetMgr.getPresetByIndex(settings, settings.activePresetIndex);
+        const sections = PresetMgr.ensurePromptSections(active);
+        const index = settings.activePromptSectionIndex || 0;
+        const section = sections[index];
+        if (!section) {
+            notifyError('프롬프트 섹션을 찾을 수 없습니다.');
+            return;
+        }
+        if (!window.confirm(`"${section.name || 'Prompt Section'}" 섹션을 삭제할까요?`)) {
+            return;
+        }
+        const ok = PresetMgr.deletePromptSection(settings, settings.activePresetIndex, index);
+        if (!ok) {
+            notifyError('마지막 1개 프롬프트 섹션은 삭제할 수 없습니다.');
+            return;
+        }
+        settings.activePromptSectionIndex = Math.max(0, Math.min(index, sections.length - 2));
+        saveSettings({ immediate: true });
+        renderSettings();
+        notifyInfo('프롬프트 섹션을 삭제했습니다.');
     });
 
     bindPromptTextarea(root, '#aux-split-user-template', (event) => {
@@ -769,6 +954,19 @@ export function renderSettings() {
         settings.mainBlockerPrompt = DEFAULT_MAIN_BLOCKER_PROMPT;
         settings.auxSystemPrompt = DEFAULT_AUX_SYSTEM_PROMPT;
         settings.auxUserPromptTemplate = DEFAULT_AUX_USER_PROMPT_TEMPLATE;
+        const active = PresetMgr.getPresetByIndex(settings, settings.activePresetIndex);
+        if (active) {
+            active.promptSections = [
+                PresetMgr.createPromptSection({
+                    id: 'main',
+                    name: 'Main Aux Prompt',
+                    order: 100,
+                    content: DEFAULT_AUX_SYSTEM_PROMPT,
+                }),
+            ];
+            active.auxSystemPrompt = DEFAULT_AUX_SYSTEM_PROMPT;
+            settings.activePromptSectionIndex = 0;
+        }
         saveSettings({ immediate: true });
         renderSettings();
     });

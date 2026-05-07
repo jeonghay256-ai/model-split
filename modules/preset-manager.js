@@ -48,7 +48,74 @@ export const DEFAULT_MAIN_BLOCKER_PROMPT = [
     'Keep all other character, world, and roleplay instructions.',
 ].join('\n');
 
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
+
+export function createPromptSection(template = {}) {
+    return {
+        id: template.id || `section_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        name: template.name || 'Prompt Section',
+        enabled: template.enabled !== false,
+        order: Number.isFinite(Number(template.order)) ? Number(template.order) : 100,
+        targetOutputs: Array.isArray(template.targetOutputs) ? template.targetOutputs.slice() : [],
+        roleFilter: Array.isArray(template.roleFilter) ? template.roleFilter.slice() : [],
+        content: typeof template.content === 'string' ? template.content : '',
+    };
+}
+
+export function ensurePromptSections(preset) {
+    if (!preset || typeof preset !== 'object') {
+        return [];
+    }
+
+    if (!Array.isArray(preset.promptSections) || preset.promptSections.length === 0) {
+        preset.promptSections = [
+            createPromptSection({
+                id: 'main',
+                name: 'Main Aux Prompt',
+                order: 100,
+                content: preset.auxSystemPrompt || DEFAULT_AUX_SYSTEM_PROMPT,
+            }),
+        ];
+    } else {
+        preset.promptSections = preset.promptSections.map((section, index) => createPromptSection({
+            id: section?.id || `section_${index + 1}`,
+            name: section?.name || `Prompt Section ${index + 1}`,
+            enabled: section?.enabled !== false,
+            order: Number.isFinite(Number(section?.order)) ? Number(section.order) : (index + 1) * 100,
+            targetOutputs: Array.isArray(section?.targetOutputs) ? section.targetOutputs : [],
+            roleFilter: Array.isArray(section?.roleFilter) ? section.roleFilter : [],
+            content: typeof section?.content === 'string' ? section.content : '',
+        }));
+    }
+
+    return preset.promptSections;
+}
+
+export function getEnabledPromptSections(preset, activeRole = '') {
+    return ensurePromptSections(preset)
+        .filter(section => section && section.enabled !== false)
+        .filter((section) => {
+            if (!Array.isArray(section.roleFilter) || section.roleFilter.length === 0) {
+                return true;
+            }
+            return !!activeRole && section.roleFilter.includes(activeRole);
+        })
+        .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+}
+
+export function buildPromptSectionsText(preset, activeRole = '') {
+    const sections = getEnabledPromptSections(preset, activeRole);
+    if (sections.length === 0) {
+        return preset?.auxSystemPrompt || DEFAULT_AUX_SYSTEM_PROMPT;
+    }
+
+    return sections
+        .map((section) => [
+            `# ${section.name || section.id || 'Prompt Section'}`,
+            String(section.content || '').trim(),
+        ].filter(Boolean).join('\n'))
+        .join('\n\n');
+}
 
 export const DEFAULT_PRESET = Object.freeze({
     id: 'aux-split-default',
@@ -89,6 +156,17 @@ export const DEFAULT_PRESET = Object.freeze({
     silentFallback: true,
     blockerText: DEFAULT_MAIN_BLOCKER_PROMPT,
     auxSystemPrompt: DEFAULT_AUX_SYSTEM_PROMPT,
+    promptSections: Object.freeze([
+        Object.freeze({
+            id: 'main',
+            name: 'Main Aux Prompt',
+            enabled: true,
+            order: 100,
+            targetOutputs: Object.freeze([]),
+            roleFilter: Object.freeze([]),
+            content: DEFAULT_AUX_SYSTEM_PROMPT,
+        }),
+    ]),
     auxUserPromptTemplate: DEFAULT_AUX_USER_PROMPT_TEMPLATE,
     variables: Object.freeze([]),
     variableSets: null,
@@ -202,6 +280,15 @@ export function migrateLegacySettingsToPresets(settings) {
         return;
     }
 
+    if (Array.isArray(settings.presets) && settings.presets.length > 0) {
+        settings.presets.forEach((preset) => {
+            ensurePromptSections(preset);
+            preset.auxSystemPrompt = buildPromptSectionsText(preset);
+        });
+        settings.schemaVersion = CURRENT_SCHEMA_VERSION;
+        return;
+    }
+
     if (settings.schemaVersion >= CURRENT_SCHEMA_VERSION
         && Array.isArray(settings.presets)
         && settings.presets.length > 0) {
@@ -259,6 +346,14 @@ export function migrateLegacySettingsToPresets(settings) {
         silentFallback: settings.silentFallback !== false,
         blockerText,
         auxSystemPrompt: auxSys,
+        promptSections: [
+            createPromptSection({
+                id: 'main',
+                name: 'Main Aux Prompt',
+                order: 100,
+                content: auxSys,
+            }),
+        ],
         auxUserPromptTemplate: auxUser,
         variables: [],
         variableSets: null,
@@ -281,6 +376,8 @@ export function syncFlatFieldsToActivePreset(settings) {
         return;
     }
 
+    ensurePromptSections(preset);
+
     if (typeof settings.auxProfileName === 'string') {
         preset.auxProfileName = settings.auxProfileName;
     }
@@ -299,7 +396,10 @@ export function syncFlatFieldsToActivePreset(settings) {
     if (typeof settings.mainBlockerPrompt === 'string' && settings.mainBlockerPrompt.length > 0) {
         preset.blockerText = settings.mainBlockerPrompt;
     }
-    if (typeof settings.auxSystemPrompt === 'string' && settings.auxSystemPrompt.length > 0) {
+    if (Array.isArray(preset.promptSections)) {
+        preset.auxSystemPrompt = buildPromptSectionsText(preset);
+        settings.auxSystemPrompt = preset.auxSystemPrompt;
+    } else if (typeof settings.auxSystemPrompt === 'string' && settings.auxSystemPrompt.length > 0) {
         preset.auxSystemPrompt = settings.auxSystemPrompt;
     }
     if (typeof settings.auxUserPromptTemplate === 'string' && settings.auxUserPromptTemplate.length > 0) {
@@ -345,6 +445,8 @@ export function getActivePreset(settings) {
     const preset = (Array.isArray(settings.presets) && settings.presets[idx])
         ? settings.presets[idx]
         : cloneDefaultPreset();
+
+    ensurePromptSections(preset);
 
     return enrichWithLegacyFields(preset);
 }
@@ -403,6 +505,8 @@ export function syncActivePresetToFlatFields(settings) {
         return;
     }
 
+    ensurePromptSections(preset);
+
     if (typeof preset.auxProfileName !== 'string' && typeof preset.auxProfileId !== 'string') {
         preset.auxProfileName = settings.auxProfileName || '';
         preset.auxProfileId = settings.auxProfileId || '';
@@ -434,9 +538,8 @@ export function syncActivePresetToFlatFields(settings) {
     if (typeof preset.blockerText === 'string') {
         settings.mainBlockerPrompt = preset.blockerText;
     }
-    if (typeof preset.auxSystemPrompt === 'string') {
-        settings.auxSystemPrompt = preset.auxSystemPrompt;
-    }
+    preset.auxSystemPrompt = buildPromptSectionsText(preset);
+    settings.auxSystemPrompt = preset.auxSystemPrompt;
     if (typeof preset.auxUserPromptTemplate === 'string') {
         settings.auxUserPromptTemplate = preset.auxUserPromptTemplate;
     }
@@ -452,6 +555,7 @@ export function createPreset(template = null) {
         ? template.name
         : 'New Preset';
     skeleton.builtin = false;
+    ensurePromptSections(skeleton);
     return skeleton;
 }
 
@@ -466,6 +570,8 @@ export function addPreset(settings, preset) {
         throw new Error('addPreset: preset is invalid');
     }
 
+    ensurePromptSections(preset);
+    preset.auxSystemPrompt = buildPromptSectionsText(preset);
     assignUniqueId(settings, preset);
     settings.presets.push(preset);
     return settings.presets.length - 1;
@@ -546,6 +652,56 @@ export function deleteOutput(settings, presetIdx, outputIdx) {
 
     preset.outputs.splice(outputIdx, 1);
     syncActivePresetToFlatFields(settings);
+    return true;
+}
+
+export function addPromptSection(settings, presetIdx, section = {}) {
+    const preset = getPresetByIndex(settings, presetIdx);
+    if (!preset) {
+        return -1;
+    }
+    const sections = ensurePromptSections(preset);
+    const next = createPromptSection({
+        name: section.name || 'New Prompt Section',
+        order: sections.length ? Math.max(...sections.map(s => Number(s.order) || 0)) + 100 : 100,
+        content: section.content || '',
+        targetOutputs: section.targetOutputs || [],
+        roleFilter: section.roleFilter || [],
+    });
+    sections.push(next);
+    preset.auxSystemPrompt = buildPromptSectionsText(preset);
+    return sections.length - 1;
+}
+
+export function clonePromptSection(settings, presetIdx, sectionIdx) {
+    const preset = getPresetByIndex(settings, presetIdx);
+    const sections = ensurePromptSections(preset);
+    const source = sections?.[sectionIdx];
+    if (!source) {
+        return -1;
+    }
+    const cloned = createPromptSection({
+        ...structuredClone(source),
+        id: '',
+        name: `${source.name || 'Prompt Section'} (copy)`,
+        order: (Number(source.order) || 0) + 10,
+    });
+    sections.splice(sectionIdx + 1, 0, cloned);
+    preset.auxSystemPrompt = buildPromptSectionsText(preset);
+    return sectionIdx + 1;
+}
+
+export function deletePromptSection(settings, presetIdx, sectionIdx) {
+    const preset = getPresetByIndex(settings, presetIdx);
+    const sections = ensurePromptSections(preset);
+    if (!sections || sections.length <= 1) {
+        return false;
+    }
+    if (!Number.isInteger(sectionIdx) || sectionIdx < 0 || sectionIdx >= sections.length) {
+        return false;
+    }
+    sections.splice(sectionIdx, 1);
+    preset.auxSystemPrompt = buildPromptSectionsText(preset);
     return true;
 }
 
@@ -666,8 +822,24 @@ export function validatePreset(obj) {
         });
     }
 
-    if (typeof obj.auxSystemPrompt !== 'string' || !obj.auxSystemPrompt.trim()) {
-        errors.push('auxSystemPrompt must be a non-empty string');
+    if (Array.isArray(obj.promptSections) && obj.promptSections.length > 0) {
+        obj.promptSections.forEach((section, i) => {
+            if (!section || typeof section !== 'object' || Array.isArray(section)) {
+                errors.push(`promptSections[${i}] is not an object`);
+                return;
+            }
+            if (typeof section.name !== 'string' || !section.name.trim()) {
+                errors.push(`promptSections[${i}].name must be a non-empty string`);
+            }
+            if (typeof section.content !== 'string') {
+                errors.push(`promptSections[${i}].content must be string`);
+            }
+            if (section.enabled !== undefined && typeof section.enabled !== 'boolean') {
+                errors.push(`promptSections[${i}].enabled must be boolean`);
+            }
+        });
+    } else if (typeof obj.auxSystemPrompt !== 'string' || !obj.auxSystemPrompt.trim()) {
+        errors.push('auxSystemPrompt or promptSections must be present');
     }
     if (typeof obj.auxUserPromptTemplate !== 'string' || !obj.auxUserPromptTemplate.trim()) {
         errors.push('auxUserPromptTemplate must be a non-empty string');
