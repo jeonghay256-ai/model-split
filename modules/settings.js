@@ -409,7 +409,7 @@ export function renderSettings() {
     root.innerHTML = `
         <div class="aux-split-header">
             <h3>Aux Model Split</h3>
-            <span>DH-29 MVP</span>
+            <span>Preset Manager</span>
         </div>
 
         <label class="checkbox_label aux-split-row">
@@ -423,7 +423,7 @@ export function renderSettings() {
                 ? `<select id="aux-split-profile" class="text_pole">${renderProfileOptions(settings)}</select>`
                 : `<input id="aux-split-profile-name" class="text_pole" type="text" value="${escapeHtml(settings.auxProfileName)}" placeholder="수동 프로필 이름 입력">`
             }
-            <small class="aux-split-help">${profiles.length ? '저장된 ST Connection Profile을 직접 호출합니다.' : 'Connection Profile이 없습니다. ST API Connections에서 프로필을 먼저 저장하세요.'}</small>
+            <small class="aux-split-help">${profiles.length ? '활성 프리셋에 저장된 ST Connection Profile을 직접 호출합니다.' : 'Connection Profile이 없습니다. ST API Connections에서 프로필을 먼저 저장하세요.'}</small>
         </label>
 
         <label class="aux-split-field">
@@ -456,6 +456,7 @@ export function renderSettings() {
             <small class="aux-split-preset-summary">${escapeHtml(formatOutputsSummary(preset))}</small>
 
             <div class="aux-split-preset-actions">
+                <button id="aux-split-new-preset" type="button" class="menu_button">새 프리셋</button>
                 <button id="aux-split-clone" type="button" class="menu_button">복제</button>
                 <button id="aux-split-rename" type="button" class="menu_button">이름 변경</button>
                 <button id="aux-split-delete" type="button" class="menu_button">삭제</button>
@@ -631,6 +632,27 @@ export function renderSettings() {
             saveSettings({ immediate: true });
             renderSettings();
         }
+    });
+
+    bindInput(root, '#aux-split-new-preset', 'click', () => {
+        const name = window.prompt('새 프리셋 이름:', 'New Preset');
+        if (name === null) return;
+        const trimmed = name.trim();
+        if (!trimmed) {
+            notifyError('새 프리셋 생성 실패: 이름이 비어 있습니다.');
+            return;
+        }
+
+        const preset = PresetMgr.createPreset();
+        preset.name = trimmed;
+        preset.auxProfileId = settings.auxProfileId || '';
+        preset.auxProfileName = settings.auxProfileName || '';
+
+        const newIdx = PresetMgr.addPreset(settings, preset);
+        PresetMgr.setActivePreset(settings, newIdx);
+        saveSettings({ immediate: true });
+        renderSettings();
+        notifyInfo(`새 프리셋 생성 완료: ${trimmed}`);
     });
 
     bindInput(root, '#aux-split-clone', 'click', () => {

@@ -82,6 +82,8 @@ export const DEFAULT_PRESET = Object.freeze({
     ]),
 
     extraBlockTags: Object.freeze([]),
+    auxProfileName: '',
+    auxProfileId: '',
     blockerText: DEFAULT_MAIN_BLOCKER_PROMPT,
     auxSystemPrompt: DEFAULT_AUX_SYSTEM_PROMPT,
     auxUserPromptTemplate: DEFAULT_AUX_USER_PROMPT_TEMPLATE,
@@ -185,6 +187,8 @@ export function migrateLegacySettingsToPresets(settings) {
         description: '0.1.3 의 평면 설정을 자동 변환한 프리셋입니다.',
         outputs,
         extraBlockTags: [],
+        auxProfileName: settings.auxProfileName || '',
+        auxProfileId: settings.auxProfileId || '',
         blockerText,
         auxSystemPrompt: auxSys,
         auxUserPromptTemplate: auxUser,
@@ -209,6 +213,12 @@ export function syncFlatFieldsToActivePreset(settings) {
         return;
     }
 
+    if (typeof settings.auxProfileName === 'string') {
+        preset.auxProfileName = settings.auxProfileName;
+    }
+    if (typeof settings.auxProfileId === 'string') {
+        preset.auxProfileId = settings.auxProfileId;
+    }
     if (typeof settings.mainBlockerPrompt === 'string' && settings.mainBlockerPrompt.length > 0) {
         preset.blockerText = settings.mainBlockerPrompt;
     }
@@ -343,6 +353,14 @@ export function syncActivePresetToFlatFields(settings) {
     if (!preset || !Array.isArray(preset.outputs)) {
         return;
     }
+
+    if (typeof preset.auxProfileName !== 'string' && typeof preset.auxProfileId !== 'string') {
+        preset.auxProfileName = settings.auxProfileName || '';
+        preset.auxProfileId = settings.auxProfileId || '';
+    }
+
+    settings.auxProfileName = typeof preset.auxProfileName === 'string' ? preset.auxProfileName : '';
+    settings.auxProfileId = typeof preset.auxProfileId === 'string' ? preset.auxProfileId : '';
 
     const block = preset.outputs.find(o => o && o.enabled !== false && o.type === 'block');
     const marker = preset.outputs.find(o => o && o.enabled !== false && o.type === 'marker');
