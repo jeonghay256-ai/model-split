@@ -311,7 +311,12 @@ function renderOutputsList(preset) {
             <article class="aux-split-output-card ${enabledClass}">
                 <div class="aux-split-output-head">
                     <b>${escapeHtml(output?.label || output?.id || `output ${index + 1}`)}</b>
-                    <span>${escapeHtml(enabledText)}</span>
+                    <button
+                        class="menu_button aux-split-output-toggle"
+                        type="button"
+                        data-output-index="${index}"
+                        title="이 출력 항목 활성화/비활성화"
+                    >${escapeHtml(enabledText)}</button>
                 </div>
                 <div class="aux-split-output-grid">
                     <span>ID</span><code>${escapeHtml(output?.id || '')}</code>
@@ -856,6 +861,24 @@ export function renderSettings() {
     bindInput(root, '#aux-split-import-activate', 'change', (event) => {
         settings.importActivateImmediately = Boolean(event.target.checked);
         saveSettings({ immediate: true });
+    });
+
+    root.querySelectorAll('.aux-split-output-toggle').forEach((button) => {
+        button.addEventListener('click', (event) => {
+            const target = event.currentTarget;
+            const outputIndex = Number(target?.dataset?.outputIndex);
+            const active = PresetMgr.getPresetByIndex(settings, settings.activePresetIndex);
+            const output = active?.outputs?.[outputIndex];
+            if (!output) {
+                notifyError('출력 항목을 찾을 수 없습니다.');
+                return;
+            }
+
+            output.enabled = output.enabled === false;
+            saveSettings({ immediate: true });
+            renderSettings();
+            notifyInfo(`${output.label || output.id || output.tagName || 'output'}: ${output.enabled ? '활성화' : '비활성화'}`);
+        });
     });
 
     window.addEventListener('beforeunload', () => saveSettings({ immediate: true }), { once: true });

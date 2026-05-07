@@ -237,12 +237,24 @@ body.aux-split-dialog-open {
     gap: 8px;
 }
 
-.aux-split-output-head span {
+.aux-split-output-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    min-width: 54px;
+    min-height: 28px;
     padding: 2px 7px;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 999px;
     font-size: 0.82em;
-    opacity: 0.82;
+    white-space: nowrap;
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+}
+
+.aux-split-output-card.is-disabled .aux-split-output-toggle {
+    opacity: 0.72;
 }
 
 .aux-split-output-grid {
