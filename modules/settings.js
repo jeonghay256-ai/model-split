@@ -428,7 +428,7 @@ export function renderSettings() {
 
         <label class="aux-split-field">
             <span>보조 응답 토큰</span>
-            <input id="aux-split-max-tokens" class="text_pole" type="number" min="100" max="4000" step="50" value="${Number(settings.auxMaxTokens) || 600}">
+            <input id="aux-split-max-tokens" class="text_pole" type="number" min="100" max="32000" step="50" value="${Number(settings.auxMaxTokens) || 600}">
         </label>
 
         <label class="aux-split-field">
@@ -456,6 +456,7 @@ export function renderSettings() {
             <small class="aux-split-preset-summary">${escapeHtml(formatOutputsSummary(preset))}</small>
 
             <div class="aux-split-preset-actions">
+                <button id="aux-split-save-preset" type="button" class="menu_button">현재 프리셋 저장</button>
                 <button id="aux-split-new-preset" type="button" class="menu_button">새 프리셋</button>
                 <button id="aux-split-clone" type="button" class="menu_button">복제</button>
                 <button id="aux-split-rename" type="button" class="menu_button">이름 변경</button>
@@ -549,7 +550,7 @@ export function renderSettings() {
     }
 
     bindInput(root, '#aux-split-max-tokens', 'input', (event) => {
-        settings.auxMaxTokens = Math.max(100, Math.min(4000, Number(event.target.value) || 600));
+        settings.auxMaxTokens = Math.max(100, Math.min(32000, Number(event.target.value) || 600));
         saveSettings();
     });
 
@@ -634,6 +635,18 @@ export function renderSettings() {
         }
     });
 
+    bindInput(root, '#aux-split-save-preset', 'click', () => {
+        const active = PresetMgr.getPresetByIndex(settings, settings.activePresetIndex);
+        if (!active) {
+            notifyError('저장 실패: 활성 프리셋을 찾을 수 없습니다.');
+            return;
+        }
+
+        saveSettings({ immediate: true });
+        renderSettings();
+        notifyInfo(`현재 프리셋 저장 완료: ${active.name || '(no name)'}`);
+    });
+
     bindInput(root, '#aux-split-new-preset', 'click', () => {
         const name = window.prompt('새 프리셋 이름:', 'New Preset');
         if (name === null) return;
@@ -647,6 +660,9 @@ export function renderSettings() {
         preset.name = trimmed;
         preset.auxProfileId = settings.auxProfileId || '';
         preset.auxProfileName = settings.auxProfileName || '';
+        preset.auxMaxTokens = Math.max(100, Math.min(32000, Number(settings.auxMaxTokens) || 600));
+        preset.contextTurns = Math.max(0, Number(settings.contextTurns) || 0);
+        preset.silentFallback = settings.silentFallback !== false;
 
         const newIdx = PresetMgr.addPreset(settings, preset);
         PresetMgr.setActivePreset(settings, newIdx);

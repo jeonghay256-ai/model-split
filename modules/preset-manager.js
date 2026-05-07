@@ -84,6 +84,9 @@ export const DEFAULT_PRESET = Object.freeze({
     extraBlockTags: Object.freeze([]),
     auxProfileName: '',
     auxProfileId: '',
+    auxMaxTokens: 600,
+    contextTurns: 3,
+    silentFallback: true,
     blockerText: DEFAULT_MAIN_BLOCKER_PROMPT,
     auxSystemPrompt: DEFAULT_AUX_SYSTEM_PROMPT,
     auxUserPromptTemplate: DEFAULT_AUX_USER_PROMPT_TEMPLATE,
@@ -189,6 +192,9 @@ export function migrateLegacySettingsToPresets(settings) {
         extraBlockTags: [],
         auxProfileName: settings.auxProfileName || '',
         auxProfileId: settings.auxProfileId || '',
+        auxMaxTokens: Math.max(100, Number(settings.auxMaxTokens) || 600),
+        contextTurns: Math.max(0, Number(settings.contextTurns) || 0),
+        silentFallback: settings.silentFallback !== false,
         blockerText,
         auxSystemPrompt: auxSys,
         auxUserPromptTemplate: auxUser,
@@ -218,6 +224,15 @@ export function syncFlatFieldsToActivePreset(settings) {
     }
     if (typeof settings.auxProfileId === 'string') {
         preset.auxProfileId = settings.auxProfileId;
+    }
+    if (Number.isFinite(Number(settings.auxMaxTokens))) {
+        preset.auxMaxTokens = Math.max(100, Number(settings.auxMaxTokens) || 600);
+    }
+    if (Number.isFinite(Number(settings.contextTurns))) {
+        preset.contextTurns = Math.max(0, Number(settings.contextTurns) || 0);
+    }
+    if (typeof settings.silentFallback === 'boolean') {
+        preset.silentFallback = settings.silentFallback;
     }
     if (typeof settings.mainBlockerPrompt === 'string' && settings.mainBlockerPrompt.length > 0) {
         preset.blockerText = settings.mainBlockerPrompt;
@@ -361,6 +376,11 @@ export function syncActivePresetToFlatFields(settings) {
 
     settings.auxProfileName = typeof preset.auxProfileName === 'string' ? preset.auxProfileName : '';
     settings.auxProfileId = typeof preset.auxProfileId === 'string' ? preset.auxProfileId : '';
+    settings.auxMaxTokens = Math.max(100, Number(preset.auxMaxTokens) || Number(settings.auxMaxTokens) || 600);
+    settings.contextTurns = Math.max(0, Number(preset.contextTurns) || Number(settings.contextTurns) || 0);
+    settings.silentFallback = typeof preset.silentFallback === 'boolean'
+        ? preset.silentFallback
+        : settings.silentFallback !== false;
 
     const block = preset.outputs.find(o => o && o.enabled !== false && o.type === 'block');
     const marker = preset.outputs.find(o => o && o.enabled !== false && o.type === 'marker');
