@@ -41,6 +41,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     // Phase 6 신규: Import 시 가져온 프리셋을 즉시 활성화할지
     importActivateImmediately: false,
     activePromptSectionIndex: 0,
+    activeSettingsTab: 'basic',
 });
 
 export function getSettings() {
@@ -397,6 +398,50 @@ function getActivePromptSection(settings, preset) {
     return { section: sections[index], index };
 }
 
+const SETTINGS_TABS = Object.freeze([
+    { id: 'basic', label: '기본', icon: 'fa-sliders' },
+    { id: 'api', label: 'API', icon: 'fa-plug' },
+    { id: 'preset', label: '프리셋', icon: 'fa-folder-open' },
+    { id: 'outputs', label: '출력 항목', icon: 'fa-code' },
+    { id: 'prompts', label: '프롬프트', icon: 'fa-pen-to-square' },
+    { id: 'status', label: '상태', icon: 'fa-circle-info' },
+]);
+
+function normalizeSettingsTab(settings) {
+    const tabs = SETTINGS_TABS.map((tab) => tab.id);
+    if (!tabs.includes(settings.activeSettingsTab)) {
+        settings.activeSettingsTab = 'basic';
+    }
+
+    return settings.activeSettingsTab;
+}
+
+function renderSettingsTabs(activeTab) {
+    return SETTINGS_TABS.map((tab) => `
+        <button
+            type="button"
+            class="menu_button aux-split-tab ${tab.id === activeTab ? 'is-active' : ''}"
+            data-aux-split-tab="${escapeHtml(tab.id)}"
+            aria-selected="${tab.id === activeTab ? 'true' : 'false'}"
+        >
+            <span class="fa-solid ${escapeHtml(tab.icon)}"></span>
+            <span>${escapeHtml(tab.label)}</span>
+        </button>
+    `).join('');
+}
+
+function renderTabPanel(id, activeTab, content) {
+    return `
+        <section
+            class="aux-split-tab-panel ${id === activeTab ? 'is-active' : ''}"
+            data-aux-split-panel="${escapeHtml(id)}"
+            ${id === activeTab ? '' : 'hidden'}
+        >
+            ${content}
+        </section>
+    `;
+}
+
 function ymdString() {
     const d = new Date();
     const y = d.getFullYear();
@@ -627,47 +672,67 @@ export function renderSettings() {
         container.appendChild(root);
     }
 
-    root.innerHTML = `
-        <div class="aux-split-header">
-            <h3>Aux Model Split</h3>
-            <span>Preset Manager</span>
+    const activeTab = normalizeSettingsTab(settings);
+    const basicPanel = `
+        <div class="aux-split-card">
+            <label class="checkbox_label aux-split-switch-row">
+                <span>
+                    <b>확장 활성화</b>
+                    <small>끄면 보조 출력이 최종 메시지에 합성되지 않습니다.</small>
+                </span>
+                <input id="aux-split-enabled" type="checkbox" ${settings.enabled ? 'checked' : ''}>
+            </label>
+
+            <label class="checkbox_label aux-split-switch-row">
+                <span>
+                    <b>실패 시 메인 응답 유지</b>
+                    <small>보조 호출이 실패해도 RP 본문을 보존합니다.</small>
+                </span>
+                <input id="aux-split-silent" type="checkbox" ${settings.silentFallback ? 'checked' : ''}>
+            </label>
+
+            <label class="checkbox_label aux-split-switch-row">
+                <span>
+                    <b>디버그 로그</b>
+                    <small>F12 콘솔에 프로필, 보조 호출, 합성 결과를 기록합니다.</small>
+                </span>
+                <input id="aux-split-debug" type="checkbox" ${settings.debug ? 'checked' : ''}>
+            </label>
+
+            <label class="aux-split-field">
+                <span>최근 컨텍스트 턴 수</span>
+                <input id="aux-split-context-turns" class="text_pole" type="number" min="0" max="20" step="1" value="${Number(settings.contextTurns) || 0}">
+                <small class="aux-split-help">보조모델에게 함께 보내는 최근 대화 턴 수입니다.</small>
+            </label>
         </div>
+    `;
 
-        <label class="checkbox_label aux-split-row">
-            <input id="aux-split-enabled" type="checkbox" ${settings.enabled ? 'checked' : ''}>
-            <span>활성화</span>
-        </label>
+    const apiPanel = `
+        <div class="aux-split-card">
+            <div class="aux-split-status-pill">
+                <span class="fa-solid fa-plug"></span>
+                <span>현재 보조 연결: <b>${escapeHtml(getSelectedProfileSummary(settings, profiles))}</b></span>
+            </div>
 
-        <label class="aux-split-field">
-            <span>보조 Connection Profile</span>
-            ${profiles.length
-                ? `<select id="aux-split-profile" class="text_pole">${renderProfileOptions(settings)}</select>`
-                : `<input id="aux-split-profile-name" class="text_pole" type="text" value="${escapeHtml(settings.auxProfileName)}" placeholder="수동 프로필 이름 입력">`
-            }
-            <small class="aux-split-help">${profiles.length ? '활성 프리셋에 저장된 ST Connection Profile을 직접 호출합니다.' : 'Connection Profile이 없습니다. ST API Connections에서 프로필을 먼저 저장하세요.'}</small>
-        </label>
+            <label class="aux-split-field">
+                <span>보조 Connection Profile</span>
+                ${profiles.length
+                    ? `<select id="aux-split-profile" class="text_pole">${renderProfileOptions(settings)}</select>`
+                    : `<input id="aux-split-profile-name" class="text_pole" type="text" value="${escapeHtml(settings.auxProfileName)}" placeholder="수동 프로필 이름 입력">`
+                }
+                <small class="aux-split-help">${profiles.length ? '활성 프리셋에 저장된 ST Connection Profile을 직접 호출합니다.' : 'Connection Profile이 없습니다. ST API Connections에서 프로필을 먼저 저장하세요.'}</small>
+            </label>
 
-        <label class="aux-split-field">
-            <span>보조 응답 토큰</span>
-            <input id="aux-split-max-tokens" class="text_pole" type="number" min="100" max="32000" step="50" value="${Number(settings.auxMaxTokens) || 600}">
-        </label>
+            <label class="aux-split-field">
+                <span>보조 응답 토큰</span>
+                <input id="aux-split-max-tokens" class="text_pole" type="number" min="100" max="32000" step="50" value="${Number(settings.auxMaxTokens) || 600}">
+                <small class="aux-split-help">보조모델의 구조화 출력에 허용할 최대 토큰 수입니다.</small>
+            </label>
+        </div>
+    `;
 
-        <label class="aux-split-field">
-            <span>최근 컨텍스트 턴 수</span>
-            <input id="aux-split-context-turns" class="text_pole" type="number" min="0" max="20" step="1" value="${Number(settings.contextTurns) || 0}">
-        </label>
-
-        <label class="checkbox_label aux-split-row">
-            <input id="aux-split-silent" type="checkbox" ${settings.silentFallback ? 'checked' : ''}>
-            <span>실패 시 메인 응답 유지</span>
-        </label>
-
-        <label class="checkbox_label aux-split-row">
-            <input id="aux-split-debug" type="checkbox" ${settings.debug ? 'checked' : ''}>
-            <span>디버그 로그</span>
-        </label>
-
-        <div class="aux-split-preset">
+    const presetPanel = `
+        <div class="aux-split-preset aux-split-card">
             <b>활성 프리셋</b>
             <select id="aux-split-preset-select" class="text_pole">
                 ${PresetMgr.listPresets(settings).map((p, i) => `
@@ -696,11 +761,13 @@ export function renderSettings() {
                 <span>가져온 프리셋 즉시 활성화</span>
             </label>
         </div>
+    `;
 
-        <section class="aux-split-outputs">
+    const outputsPanel = `
+        <section class="aux-split-outputs aux-split-card">
             <div class="aux-split-section-title">
                 <b>출력 항목</b>
-                <small>outputs[] 구조로 합성됩니다. 각 카드에서 태그 구조를 직접 수정하세요.</small>
+                <small>보조모델 응답에서 찾을 태그와 최종 메시지에 붙일 위치를 정합니다.</small>
             </div>
             <div class="aux-split-output-toolbar">
                 <button id="aux-split-add-output" type="button" class="menu_button">출력 항목 추가</button>
@@ -708,23 +775,18 @@ export function renderSettings() {
             <div class="aux-split-output-list">
                 ${renderOutputsList(preset)}
             </div>
-        </section>
-
-        <div class="aux-split-editor">
             <div class="aux-split-notice">
-                태그 구조는 위 출력 항목 카드에서 직접 수정합니다. 태그명은 괄호 없이 입력하세요. 예: 상태창, status, choices
+                태그명은 괄호 없이 입력하세요. 예: 상태창, status, choices
             </div>
+        </section>
+    `;
 
-            <label class="aux-split-textarea-field">
-                <span>메인 모델 차단 프롬프트</span>
-                <textarea id="aux-split-main-blocker" class="text_pole" rows="7">${escapeHtml(settings.mainBlockerPrompt)}</textarea>
-                <small class="aux-split-help">메인 모델에게 해당 구조화 출력을 만들지 말라고 알려주는 지시입니다.</small>
-            </label>
-
-            <section class="aux-split-prompt-sections">
+    const promptsPanel = `
+        <div class="aux-split-editor">
+            <section class="aux-split-prompt-sections aux-split-card">
                 <div class="aux-split-section-title">
                     <b>보조 출력 프롬프트 섹션</b>
-                    <small>프리셋 안에서 여러 규칙 조각을 나누어 관리합니다.</small>
+                    <small>월드인포/작가노트에 있던 규칙을 여러 조각으로 나누어 관리합니다.</small>
                 </div>
 
                 <div class="aux-split-prompt-section-toolbar">
@@ -736,14 +798,10 @@ export function renderSettings() {
                     <button id="aux-split-delete-prompt-section" type="button" class="menu_button">삭제</button>
                 </div>
 
-                <div class="aux-split-prompt-section-meta">
+                <div class="aux-split-prompt-section-meta aux-split-prompt-section-main-meta">
                     <label>
-                        <span>이름</span>
+                        <span>섹션 이름</span>
                         <input id="aux-split-prompt-section-name" class="text_pole" type="text" value="${escapeHtml(activePromptSection?.name || '')}">
-                    </label>
-                    <label>
-                        <span>순서</span>
-                        <input id="aux-split-prompt-section-order" class="text_pole" type="number" step="10" value="${Number(activePromptSection?.order) || 100}">
                     </label>
                     <label class="checkbox_label aux-split-row aux-split-checkbox-row">
                         <input id="aux-split-prompt-section-enabled" type="checkbox" ${activePromptSection?.enabled !== false ? 'checked' : ''}>
@@ -751,36 +809,102 @@ export function renderSettings() {
                     </label>
                 </div>
 
-                <div class="aux-split-prompt-section-meta">
-                    <label>
-                        <span>연결 output ID</span>
-                        <input id="aux-split-prompt-section-targets" class="text_pole" type="text" value="${escapeHtml((activePromptSection?.targetOutputs || []).join(', '))}" placeholder="status, choices, updateVariable">
-                    </label>
-                    <label>
-                        <span>Role 필터</span>
-                        <input id="aux-split-prompt-section-roles" class="text_pole" type="text" value="${escapeHtml((activePromptSection?.roleFilter || []).join(', '))}" placeholder="student, faculty, outsider">
-                    </label>
-                </div>
-
                 <label class="aux-split-textarea-field">
                     <span>섹션 내용</span>
-                    <textarea id="aux-split-prompt-section-content" class="text_pole" rows="14">${escapeHtml(activePromptSection?.content || '')}</textarea>
-                    <small class="aux-split-help">월드인포/작가노트에 있던 상태창, 선택지, 변수 규칙을 섹션별로 옮겨 넣으세요. 보조 호출 시 활성 섹션들이 순서대로 합쳐집니다.</small>
+                    <textarea id="aux-split-prompt-section-content" class="text_pole" rows="16">${escapeHtml(activePromptSection?.content || '')}</textarea>
+                    <small class="aux-split-help">활성화된 섹션들이 조립 순서대로 합쳐져 보조모델에게 전달됩니다.</small>
                 </label>
+
+                <details class="aux-split-advanced">
+                    <summary>고급 설정</summary>
+                    <div class="aux-split-prompt-section-meta">
+                        <label>
+                            <span>조립 순서</span>
+                            <input id="aux-split-prompt-section-order" class="text_pole" type="number" step="10" value="${Number(activePromptSection?.order) || 100}">
+                        </label>
+                        <label>
+                            <span>관련 output ID</span>
+                            <input id="aux-split-prompt-section-targets" class="text_pole" type="text" value="${escapeHtml((activePromptSection?.targetOutputs || []).join(', '))}" placeholder="status, choices, updateVariable">
+                        </label>
+                        <label>
+                            <span>Role 필터</span>
+                            <input id="aux-split-prompt-section-roles" class="text_pole" type="text" value="${escapeHtml((activePromptSection?.roleFilter || []).join(', '))}" placeholder="student, faculty, outsider">
+                        </label>
+                    </div>
+                    <small class="aux-split-help">비워두면 항상 사용됩니다. Role 필터는 자연어가 아니라 student, faculty 같은 기계적 값입니다.</small>
+                </details>
             </section>
 
-            <label class="aux-split-textarea-field">
+            <label class="aux-split-textarea-field aux-split-card">
+                <span>메인 모델 차단 프롬프트</span>
+                <textarea id="aux-split-main-blocker" class="text_pole" rows="7">${escapeHtml(settings.mainBlockerPrompt)}</textarea>
+                <small class="aux-split-help">메인 모델에게 구조화 출력을 만들지 말라고 알려주는 지시입니다.</small>
+            </label>
+
+            <label class="aux-split-textarea-field aux-split-card">
                 <span>보조 유저 프롬프트 템플릿</span>
                 <textarea id="aux-split-user-template" class="text_pole" rows="10">${escapeHtml(settings.auxUserPromptTemplate)}</textarea>
                 <small class="aux-split-help">사용 가능 변수: {{mainResponse}}, {{recentContext}}, {{charName}}, {{userName}}, {{tagName}}, {{footerTagName}}, {{omitFooterWhenTagName}}</small>
             </label>
-        </div>
 
-        <div class="aux-split-actions">
-            <button id="aux-split-reset-prompts" type="button" class="menu_button">프롬프트 기본값 복원</button>
-            <button id="aux-split-show-last" type="button" class="menu_button">마지막 보조 응답 보기</button>
+            <div class="aux-split-actions">
+                <button id="aux-split-reset-prompts" type="button" class="menu_button">프롬프트 기본값 복원</button>
+            </div>
         </div>
     `;
+
+    const statusPanel = `
+        <div class="aux-split-card">
+            <div class="aux-split-section-title">
+                <b>상태 / 디버그</b>
+                <small>마지막 보조 호출 결과를 빠르게 확인합니다.</small>
+            </div>
+            <div class="aux-split-status-grid">
+                <span>Connection Profiles</span>
+                <b>${profiles.length}</b>
+                <span>선택된 프로필</span>
+                <b>${escapeHtml(getSelectedProfileSummary(settings, profiles))}</b>
+                <span>마지막 보조 응답</span>
+                <b>${settings.lastAuxOutput ? '저장됨' : '없음'}</b>
+            </div>
+            <div class="aux-split-actions">
+                <button id="aux-split-show-last" type="button" class="menu_button">마지막 보조 응답 보기</button>
+            </div>
+        </div>
+    `;
+
+    root.innerHTML = `
+        <div class="aux-split-header">
+            <h3>Aux Model Split</h3>
+            <span>${escapeHtml(preset?.name || 'Preset Manager')}</span>
+        </div>
+
+        <nav class="aux-split-tabs" aria-label="Aux Model Split settings">
+            ${renderSettingsTabs(activeTab)}
+        </nav>
+
+        <div class="aux-split-tab-content">
+            ${renderTabPanel('basic', activeTab, basicPanel)}
+            ${renderTabPanel('api', activeTab, apiPanel)}
+            ${renderTabPanel('preset', activeTab, presetPanel)}
+            ${renderTabPanel('outputs', activeTab, outputsPanel)}
+            ${renderTabPanel('prompts', activeTab, promptsPanel)}
+            ${renderTabPanel('status', activeTab, statusPanel)}
+        </div>
+    `;
+
+    root.querySelectorAll('[data-aux-split-tab]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+            const tab = event.currentTarget?.dataset?.auxSplitTab;
+            if (!SETTINGS_TABS.some((item) => item.id === tab)) {
+                return;
+            }
+
+            settings.activeSettingsTab = tab;
+            saveSettings();
+            renderSettings();
+        });
+    });
 
     bindInput(root, '#aux-split-enabled', 'change', (event) => {
         settings.enabled = Boolean(event.target.checked);
