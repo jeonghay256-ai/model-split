@@ -19,6 +19,8 @@ import { getRepairCount, resetRepairCount } from './modules/json-repair.js';
 const MODULE_NAME = 'aux_model_split';
 const AUX_SPLIT_UPDATE_COMPLETE_EVENT = 'aux_split_update_complete';
 
+let baselineChatLength = 0;
+
 globalThis.auxModelSplitInterceptor = async function auxModelSplitInterceptor(chat, contextSize, abort, type) {
     try {
         const settings = getSettings();
@@ -51,22 +53,13 @@ function shouldSkipReceivedMessage(message) {
     return false;
 }
 
-function hasPriorUserMessage(chat, messageId) {
-    if (!Array.isArray(chat) || !Number.isInteger(messageId) || messageId <= 0) {
-        return false;
-    }
+function markExistingMessagesAsHandled(context = getContext()) {
+    const chat = context?.chat;
+    baselineChatLength = Array.isArray(chat) ? chat.length : 0;
+}
 
-    for (let i = messageId - 1; i >= 0; i--) {
-        const message = chat[i];
-        if (!message || message.is_system) {
-            continue;
-        }
-        if (message.is_user) {
-            return true;
-        }
-    }
-
-    return false;
+function isExistingLoadedMessage(messageId) {
+    return Number.isInteger(messageId) && messageId >= 0 && messageId < baselineChatLength;
 }
 
 function emitUpdateComplete(context, payload, settings) {
@@ -105,8 +98,8 @@ async function handleMessageReceived(eventData) {
         return;
     }
 
-    if (!hasPriorUserMessage(chat, messageId)) {
-        debugLog(settings, `MESSAGE_RECEIVED skipped: no prior user message (likely greeting), messageId=${messageId}`);
+    if (isExistingLoadedMessage(messageId)) {
+        debugLog(settings, `MESSAGE_RECEIVED skipped: existing loaded message, messageId=${messageId}, baseline=${baselineChatLength}`);
         return;
     }
 
@@ -289,6 +282,7 @@ function registerEvents() {
     if (eventTypes.CHAT_CHANGED) {
         eventSource.on(eventTypes.CHAT_CHANGED, () => {
             resetAuxCallState();
+            markExistingMessagesAsHandled();
             debugLog(getSettings(), 'Chat changed; aux state reset');
         });
     }
@@ -497,6 +491,7 @@ function init() {
 
     initialized = true;
     initSettings();
+    markExistingMessagesAsHandled();
     renderSettings();
     registerSettingsMenuButton();
     registerEvents();
