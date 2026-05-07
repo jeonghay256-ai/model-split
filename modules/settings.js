@@ -276,6 +276,60 @@ function formatOutputsSummary(preset) {
     return 'outputs: ' + enabled.map(o => o.id).join(', ');
 }
 
+function isLegacySimplePreset(preset) {
+    const outputs = Array.isArray(preset?.outputs) ? preset.outputs : [];
+    if (outputs.length === 0 || outputs.length > 2) {
+        return false;
+    }
+
+    const blockCount = outputs.filter(o => o?.type === 'block').length;
+    const markerCount = outputs.filter(o => o?.type === 'marker').length;
+    const nestedCount = outputs.filter(o => o?.type === 'nested').length;
+    return blockCount === 1 && markerCount <= 1 && nestedCount === 0;
+}
+
+function formatOutputPosition(position) {
+    if (position === 'prepend') return '상단';
+    if (position === 'append') return '하단';
+    return position || '(none)';
+}
+
+function renderOutputsList(preset) {
+    const outputs = Array.isArray(preset?.outputs) ? preset.outputs : [];
+    if (outputs.length === 0) {
+        return '<div class="aux-split-empty">이 프리셋에는 출력 항목이 없습니다.</div>';
+    }
+
+    return outputs.map((output, index) => {
+        const enabledText = output?.enabled === false ? '비활성' : '활성';
+        const enabledClass = output?.enabled === false ? 'is-disabled' : 'is-enabled';
+        const tagName = output?.tagName ? `<${output.tagName}>` : '(no tag)';
+        const template = output?.outputTemplate || '';
+        const hasTemplate = output?.type === 'nested' || output?.responseMode === 'json+template';
+
+        return `
+            <article class="aux-split-output-card ${enabledClass}">
+                <div class="aux-split-output-head">
+                    <b>${escapeHtml(output?.label || output?.id || `output ${index + 1}`)}</b>
+                    <span>${escapeHtml(enabledText)}</span>
+                </div>
+                <div class="aux-split-output-grid">
+                    <span>ID</span><code>${escapeHtml(output?.id || '')}</code>
+                    <span>태그</span><code>${escapeHtml(tagName)}</code>
+                    <span>타입</span><code>${escapeHtml(output?.type || '')}</code>
+                    <span>위치</span><code>${escapeHtml(formatOutputPosition(output?.position))}</code>
+                    <span>모드</span><code>${escapeHtml(output?.responseMode || 'raw')}</code>
+                    <span>생략 조건</span><code>${escapeHtml(output?.omitWhenTagPresent || '(none)')}</code>
+                </div>
+                ${hasTemplate ? `<details class="aux-split-output-template">
+                    <summary>템플릿 보기</summary>
+                    <pre>${escapeHtml(template)}</pre>
+                </details>` : ''}
+            </article>
+        `;
+    }).join('');
+}
+
 function ymdString() {
     const d = new Date();
     const y = d.getFullYear();
@@ -393,6 +447,7 @@ function getSelectedProfileSummary(settings, profiles) {
 export function renderSettings() {
     const settings = getSettings();
     const preset = getActivePreset(settings);
+    const showLegacyFields = isLegacySimplePreset(preset);
     const container = findSettingsContainer();
     const profiles = getConnectionProfiles();
     debugLog(settings, `Connection profiles count: ${profiles.length}`);
@@ -476,29 +531,45 @@ export function renderSettings() {
             </label>
         </div>
 
+        <section class="aux-split-outputs">
+            <div class="aux-split-section-title">
+                <b>출력 항목</b>
+                <small>${showLegacyFields ? '단순 프리셋은 아래 호환 필드로 빠르게 수정할 수 있습니다.' : '다중 출력 프리셋은 outputs[] 구조로 합성됩니다.'}</small>
+            </div>
+            <div class="aux-split-output-list">
+                ${renderOutputsList(preset)}
+            </div>
+        </section>
+
         <div class="aux-split-editor">
-            <label class="aux-split-field">
-                <span>출력 태그명</span>
-                <input id="aux-split-tag-name" class="text_pole" type="text" value="${escapeHtml(settings.outputTagName)}" placeholder="상태창">
-                <small class="aux-split-help">태그 괄호 없이 이름만 입력합니다. 예: 상태창, status, choices</small>
-            </label>
+            ${showLegacyFields ? `
+                <label class="aux-split-field">
+                    <span>출력 태그명</span>
+                    <input id="aux-split-tag-name" class="text_pole" type="text" value="${escapeHtml(settings.outputTagName)}" placeholder="상태창">
+                    <small class="aux-split-help">태그 괄호 없이 이름만 입력합니다. 예: 상태창, status, choices</small>
+                </label>
 
-            <label class="aux-split-field">
-                <span>하단 마커 태그명</span>
-                <input id="aux-split-footer-tag-name" class="text_pole" type="text" value="${escapeHtml(settings.footerTagName)}" placeholder="메뉴">
-                <small class="aux-split-help">닫는 태그가 없는 하단 마커입니다. DH-29 기본값: 메뉴</small>
-            </label>
+                <label class="aux-split-field">
+                    <span>하단 마커 태그명</span>
+                    <input id="aux-split-footer-tag-name" class="text_pole" type="text" value="${escapeHtml(settings.footerTagName)}" placeholder="메뉴">
+                    <small class="aux-split-help">닫는 태그가 없는 하단 마커입니다. DH-29 기본값: 메뉴</small>
+                </label>
 
-            <label class="aux-split-field">
-                <span>마커 생략 조건 태그명</span>
-                <input id="aux-split-omit-footer-tag-name" class="text_pole" type="text" value="${escapeHtml(settings.omitFooterWhenTagName)}" placeholder="d-0">
-                <small class="aux-split-help">이 마커가 있으면 하단 마커를 붙이지 않습니다. DH-29 기본값: d-0</small>
-            </label>
+                <label class="aux-split-field">
+                    <span>마커 생략 조건 태그명</span>
+                    <input id="aux-split-omit-footer-tag-name" class="text_pole" type="text" value="${escapeHtml(settings.omitFooterWhenTagName)}" placeholder="d-0">
+                    <small class="aux-split-help">이 마커가 있으면 하단 마커를 붙이지 않습니다. DH-29 기본값: d-0</small>
+                </label>
 
-            <label class="checkbox_label aux-split-row">
-                <input id="aux-split-append-footer" type="checkbox" ${settings.appendFooterTag ? 'checked' : ''}>
-                <span>하단 마커를 최종 메시지 맨 아래에 붙이기</span>
-            </label>
+                <label class="checkbox_label aux-split-row">
+                    <input id="aux-split-append-footer" type="checkbox" ${settings.appendFooterTag ? 'checked' : ''}>
+                    <span>하단 마커를 최종 메시지 맨 아래에 붙이기</span>
+                </label>
+            ` : `
+                <div class="aux-split-notice">
+                    이 프리셋은 여러 출력 항목을 사용합니다. 태그 구조는 위 출력 항목 목록을 기준으로 처리됩니다.
+                </div>
+            `}
 
             <label class="aux-split-textarea-field">
                 <span>메인 모델 차단 프롬프트</span>
