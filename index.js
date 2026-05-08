@@ -20,6 +20,8 @@ const MODULE_NAME = 'aux_model_split';
 const AUX_SPLIT_UPDATE_COMPLETE_EVENT = 'aux_split_update_complete';
 
 let baselineChatLength = 0;
+let baselineMessageSignatures = new Map();
+let processedMessageKeys = new Set();
 
 globalThis.auxModelSplitInterceptor = async function auxModelSplitInterceptor(chat, contextSize, abort, type) {
     try {
@@ -56,10 +58,45 @@ function shouldSkipReceivedMessage(message) {
 function markExistingMessagesAsHandled(context = getContext()) {
     const chat = context?.chat;
     baselineChatLength = Array.isArray(chat) ? chat.length : 0;
+    baselineMessageSignatures = new Map();
+    processedMessageKeys = new Set();
+    if (!Array.isArray(chat)) {
+        return;
+    }
+
+    chat.forEach((message, index) => {
+        baselineMessageSignatures.set(index, getMessageSignature(message));
+    });
 }
 
-function isExistingLoadedMessage(messageId) {
-    return Number.isInteger(messageId) && messageId >= 0 && messageId < baselineChatLength;
+function getMessageSignature(message) {
+    if (!message) {
+        return '';
+    }
+
+    return [
+        message.send_date ?? '',
+        message.name ?? '',
+        message.is_user ? 'user' : 'assistant',
+        message.is_system ? 'system' : '',
+        message.mes ?? '',
+    ].join('\n');
+}
+
+function getMessageProcessKey(messageId, message) {
+    return [
+        messageId,
+        message?.send_date ?? '',
+        message?.name ?? '',
+    ].join(':');
+}
+
+function isExistingLoadedMessage(messageId, message) {
+    if (!Number.isInteger(messageId) || messageId < 0 || messageId >= baselineChatLength) {
+        return false;
+    }
+
+    return baselineMessageSignatures.get(messageId) === getMessageSignature(message);
 }
 
 function emitUpdateComplete(context, payload, settings) {
@@ -98,8 +135,14 @@ async function handleMessageReceived(eventData) {
         return;
     }
 
-    if (isExistingLoadedMessage(messageId)) {
+    if (isExistingLoadedMessage(messageId, message)) {
         debugLog(settings, `MESSAGE_RECEIVED skipped: existing loaded message, messageId=${messageId}, baseline=${baselineChatLength}`);
+        return;
+    }
+
+    const processKey = getMessageProcessKey(messageId, message);
+    if (processedMessageKeys.has(processKey)) {
+        debugLog(settings, `MESSAGE_RECEIVED skipped: already processed, messageId=${messageId}`);
         return;
     }
 
@@ -128,6 +171,7 @@ async function handleMessageReceived(eventData) {
 
     try {
         // 1차 호출
+        processedMessageKeys.add(processKey);
         const prompts = buildAuxPrompt({ mainResponse: strippedMain, context, settings, preset });
         promptsForLog = prompts;
 
