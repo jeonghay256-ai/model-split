@@ -99,6 +99,10 @@ function isExistingLoadedMessage(messageId, message) {
     return baselineMessageSignatures.get(messageId) === getMessageSignature(message);
 }
 
+function isGreetingMessage(messageId, message) {
+    return messageId === 0 && message && !message.is_user && !message.is_system;
+}
+
 function emitUpdateComplete(context, payload, settings) {
     const eventSource = context?.eventSource;
     if (!eventSource?.emit) return;
@@ -132,6 +136,11 @@ async function handleMessageReceived(eventData) {
 
     if (shouldSkipReceivedMessage(message)) {
         debugLog(settings, 'MESSAGE_RECEIVED skipped: not a normal character message');
+        return;
+    }
+
+    if (isGreetingMessage(messageId, message)) {
+        debugLog(settings, 'MESSAGE_RECEIVED skipped: greeting message');
         return;
     }
 
