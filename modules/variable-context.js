@@ -207,14 +207,44 @@ function collectFromTavernHelper(target, fields) {
     }
 }
 
+function collectTavernHelperKeys(tables) {
+    const keys = new Set();
+    for (const key of Object.keys(tables?.chat || {})) {
+        keys.add(key);
+    }
+
+    const statData = tables?.message?.stat_data;
+    if (statData && typeof statData === 'object' && !Array.isArray(statData)) {
+        for (const key of Object.keys(statData)) {
+            keys.add(key);
+        }
+    }
+
+    return Array.from(keys);
+}
+
+function uniqueByNormalizedKey(keys) {
+    const seen = new Set();
+    const result = [];
+    for (const key of keys) {
+        const normalized = normalizeKey(key);
+        if (!normalized || seen.has(normalized)) continue;
+        seen.add(normalized);
+        result.push(key);
+    }
+    return result;
+}
+
 export function collectCurrentVariables({ context, preset, activeRole, fields = [] }) {
     const known = new Map();
     const roleKey = preset?.variableSets?.key || 'Role';
+    const tavernHelperTables = getTavernHelperVariableTables();
     const variableFields = Array.from(new Set([
         activeRole ? roleKey : '',
         'lang',
         ...(Array.isArray(fields) ? fields : []),
         ...(Array.isArray(preset?.variables) ? preset.variables : []),
+        ...collectTavernHelperKeys(tavernHelperTables),
     ].filter(Boolean)));
 
     if (variableFields.length === 0 && !activeRole) {
@@ -230,11 +260,11 @@ export function collectCurrentVariables({ context, preset, activeRole, fields = 
     collectFromPossibleStores(known, context, variableFields, activeRole);
     collectFromGetVar(known, variableFields);
 
-    const orderedKeys = Array.from(new Set([
-        activeRole ? 'role' : '',
+    const orderedKeys = uniqueByNormalizedKey([
+        (activeRole || variableFields.some(key => normalizeKey(key) === 'role')) ? 'role' : '',
         'lang',
         ...variableFields.filter(key => key !== roleKey),
-    ].filter(Boolean)));
+    ].filter(Boolean));
     const values = {};
     const sources = {};
 

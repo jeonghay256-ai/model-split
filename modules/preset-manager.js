@@ -1,3 +1,5 @@
+import { getTavernHelperVariableTables } from './tavern-helper-adapter.js';
+
 export const DEFAULT_AUX_SYSTEM_PROMPT = [
     'You generate only the structured status block for the current SillyTavern message.',
     'Return exactly one <{{tagName}}>...</{{tagName}}> block.',
@@ -975,6 +977,23 @@ export function findOutputById(preset, id) {
     return preset.outputs.find(o => o && o.id === id) ?? null;
 }
 
+function getCaseInsensitiveValue(object, key) {
+    if (!object || typeof object !== 'object' || !key) return undefined;
+    if (Object.hasOwn(object, key)) return object[key];
+    const lowerKey = String(key).toLowerCase();
+    const matchingKey = Object.keys(object).find(k => String(k).toLowerCase() === lowerKey);
+    return matchingKey ? object[matchingKey] : undefined;
+}
+
+function normalizeRoleValue(value, sets) {
+    if (value === null || value === undefined) return null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    if (Object.hasOwn(sets, raw)) return raw;
+    const lowerRaw = raw.toLowerCase();
+    return Object.keys(sets).find(key => key.toLowerCase() === lowerRaw) ?? null;
+}
+
 // ============================================================================
 // 5d 신규: variableSets / Role 결정 / JSONPatch op policy
 // ============================================================================
@@ -995,6 +1014,12 @@ export function resolveActiveRole(settings, preset, context) {
         return null;
     }
     const roleKey = preset.variableSets.key || 'Role';
+
+    const tables = getTavernHelperVariableTables();
+    for (const tableName of ['chat', 'message', 'character', 'global']) {
+        const tableRole = normalizeRoleValue(getCaseInsensitiveValue(tables?.[tableName], roleKey), sets);
+        if (tableRole) return tableRole;
+    }
 
     // 1. settings.activeRoleOverride (디버그 강제)
     if (typeof settings?.activeRoleOverride === 'string' && settings.activeRoleOverride.trim()) {
