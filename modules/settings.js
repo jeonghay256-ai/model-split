@@ -857,7 +857,7 @@ export function renderSettings() {
             <label class="aux-split-textarea-field aux-split-card">
                 <span>보조 유저 프롬프트 템플릿</span>
                 <textarea id="aux-split-user-template" class="text_pole" rows="10">${escapeHtml(settings.auxUserPromptTemplate)}</textarea>
-                <small class="aux-split-help">사용 가능 변수: {{mainResponse}}, {{recentContext}}, {{charName}}, {{userName}}, {{tagName}}, {{footerTagName}}, {{omitFooterWhenTagName}}</small>
+                <small class="aux-split-help">사용 가능 변수: {{mainResponse}}, {{recentContext}}, {{currentVariableContext}}, {{charName}}, {{userName}}, {{tagName}}, {{footerTagName}}, {{omitFooterWhenTagName}}</small>
             </label>
 
             <div class="aux-split-actions">

@@ -23,6 +23,7 @@ The main model can focus on roleplay prose while an auxiliary model generates st
 - Partial retry for failed outputs
 - Main-output stripping, including incomplete blocked tags
 - JSONPatch repair helpers for nested outputs
+- Current known variables injection for auxiliary prompts
 - Debug API exposed as `AuxModelSplitDebug`
 
 ## Recommended Workflow
@@ -51,6 +52,8 @@ AuxModelSplitDebug.listPresets()
 AuxModelSplitDebug.getActivePreset()
 AuxModelSplitDebug.setActivePreset(0)
 AuxModelSplitDebug.exportAll()
+AuxModelSplitDebug.diagnoseCurrentVariables()
+AuxModelSplitDebug.diagnoseTavernHelper()
 AuxModelSplitDebug.simulateAuxResponse('<상태창>...</상태창>')
 AuxModelSplitDebug.simulateMainStrip('<상태창>...</상태창>RP')
 ```

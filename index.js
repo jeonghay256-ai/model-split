@@ -15,6 +15,7 @@ import { injectStatusBlocker } from './modules/interceptor.js';
 import { evaluateSuppression, diagnoseSuppression } from './modules/suppression.js';
 import { normalizeJsonPatch } from './modules/jsonpatch-handler.js';
 import { getRepairCount, resetRepairCount } from './modules/json-repair.js';
+import { diagnoseTavernHelper } from './modules/tavern-helper-adapter.js';
 
 const MODULE_NAME = 'aux_model_split';
 const AUX_SPLIT_UPDATE_COMPLETE_EVENT = 'aux_split_update_complete';
@@ -511,6 +512,24 @@ function exposeDebugInterface() {
             }
             return result;
         },
+
+        diagnoseCurrentVariables: () => {
+            const settings = getSettings();
+            const preset = PresetMgr.getActivePreset(settings);
+            const prompts = buildAuxPrompt({
+                mainResponse: '(diagnostic main response)',
+                context: getContext(),
+                settings,
+                preset,
+            });
+            return {
+                activeRole: PresetMgr.resolveActiveRole(settings, preset, getContext()),
+                currentVariables: prompts.currentVariables,
+                userPromptPreview: prompts.userPrompt.slice(0, 2000),
+            };
+        },
+
+        diagnoseTavernHelper: () => diagnoseTavernHelper(),
 
         testSuppression: () => diagnoseSuppression(),
 

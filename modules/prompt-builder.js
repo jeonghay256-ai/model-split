@@ -5,6 +5,11 @@ import {
     getActiveVariableFields,
     buildPromptSectionsText,
 } from './preset-manager.js';
+import {
+    collectCurrentVariables,
+    formatCurrentVariablesBlock,
+    injectCurrentVariablesIntoUserPrompt,
+} from './variable-context.js';
 
 function getCharacterName(context) {
     const characterId = context?.characterId;
@@ -58,6 +63,8 @@ export function buildAuxPrompt({ mainResponse, context, settings, preset }) {
     const statusFieldsList = fields.join('|');
     const statusFieldsKeyValue = fields.map(f => `${f}=...`).join('|');
     const statusFieldsLines = fields.map(f => `- ${f}: ...`).join('\n');
+    const currentVariables = collectCurrentVariables({ context, preset, activeRole, fields });
+    const currentVariablesBlock = formatCurrentVariablesBlock(currentVariables);
 
     const variables = {
         mainResponse,
@@ -75,12 +82,18 @@ export function buildAuxPrompt({ mainResponse, context, settings, preset }) {
         statusFieldsList,
         statusFieldsKeyValue,
         statusFieldsLines,
+        currentVariables: currentVariablesBlock,
+        currentVariableContext: currentVariablesBlock,
     };
 
     const systemPrompt = applyTemplate(buildPromptSectionsText(preset, activeRole || ''), variables);
-    const userPrompt = applyTemplate(preset.auxUserPromptTemplate, variables);
+    let userPrompt = applyTemplate(preset.auxUserPromptTemplate, variables);
+    if (!String(preset.auxUserPromptTemplate || '').includes('{{currentVariables')
+        && !String(preset.auxUserPromptTemplate || '').includes('{{currentVariableContext')) {
+        userPrompt = injectCurrentVariablesIntoUserPrompt(userPrompt, currentVariablesBlock);
+    }
 
-    return { systemPrompt, userPrompt };
+    return { systemPrompt, userPrompt, currentVariables };
 }
 
 /**
