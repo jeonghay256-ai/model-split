@@ -1,20 +1,7 @@
 import { debugLog } from './utils.js';
 import { collectBlockedTagNames, getEnabledOutputs } from './preset-manager.js';
 import { evaluateSuppression } from './suppression.js';
-
-function looksLikeSlashGeneratedPrompt(chat) {
-    const text = Array.isArray(chat)
-        ? chat.map(message => String(message?.mes ?? '')).join('\n\n')
-        : '';
-    if (!text) return false;
-
-    return /\[System Note:/i.test(text)
-        || /\*\*--- Element \d+:/i.test(text)
-        || /\*\*Variable Initialization:/i.test(text)
-        || /\*\*STRUCTURE:\*\*/i.test(text)
-        || /Output the following:/i.test(text)
-        || /Generate the formatted/i.test(text);
-}
+import { looksLikeSlashGeneratedPrompt } from './qr-classifier.js';
 
 export function injectStatusBlocker(chat, type, preset, settings) {
     const suppression = evaluateSuppression(type);
@@ -28,7 +15,7 @@ export function injectStatusBlocker(chat, type, preset, settings) {
         return;
     }
 
-    if (looksLikeSlashGeneratedPrompt(chat)) {
+    if (looksLikeSlashGeneratedPrompt(chat, preset)) {
         debugLog(settings, 'Interceptor skipped: slash/QR generated prompt');
         return;
     }

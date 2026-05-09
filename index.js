@@ -16,6 +16,7 @@ import { evaluateSuppression, diagnoseSuppression } from './modules/suppression.
 import { normalizeJsonPatch } from './modules/jsonpatch-handler.js';
 import { getRepairCount, resetRepairCount } from './modules/json-repair.js';
 import { diagnoseTavernHelper } from './modules/tavern-helper-adapter.js';
+import { classifyReceivedMessage } from './modules/qr-classifier.js';
 
 const MODULE_NAME = 'aux_model_split';
 const AUX_SPLIT_UPDATE_COMPLETE_EVENT = 'aux_split_update_complete';
@@ -23,6 +24,7 @@ const AUX_SPLIT_UPDATE_COMPLETE_EVENT = 'aux_split_update_complete';
 let baselineChatLength = 0;
 let baselineMessageSignatures = new Map();
 let processedMessageKeys = new Set();
+let pendingQrTimers = new Map();
 
 globalThis.auxModelSplitInterceptor = async function auxModelSplitInterceptor(chat, contextSize, abort, type) {
     try {
@@ -56,67 +58,12 @@ function shouldSkipReceivedMessage(message) {
     return false;
 }
 
-function looksLikeSlashGeneratedUtilityMessage(message, preset) {
-    const text = String(message?.mes ?? '');
-    if (!text) return false;
-
-    const utilityTags = [
-        'CASTE_EVAL',
-        'Button',
-        'NOTICE_BOARD',
-        'FB',
-        'USER_POST',
-        'POLL_BOARD',
-        'USER_POLL',
-        'STREAM_BOARD',
-        'USER_STREAM',
-        'RK_AB',
-        'RK_GD',
-        'TALENT_BOARD',
-        'USER_TALENT',
-        'TALENT_ACCEPTED',
-        'MENTEE_LIST',
-        'MENTOR_MATCH',
-        'MENTEE_APP',
-        'MENTOR_REPORT',
-        'EDEN_LIFE',
-        'USER_EDENLIFE_POST',
-        'EDEN_LIFE_PROFILE',
-        'EDEN_RADIO',
-        'SV_VIEW',
-        'SV_WRITE',
-        'PHONE_UI',
-        'APP_NOTIF',
-        'character_profile',
-        'world',
-    ];
-
-    const hasUtilityTag = utilityTags.some((tag) => {
-        const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(`<${escaped}(\\s[^>]*)?>`, 'i').test(text);
-    });
-    if (hasUtilityTag) return true;
-
-    const enabledOutputs = getEnabledOutputs(preset);
-    const hasAuxManagedOutput = enabledOutputs.some((output) => {
-        if (!output?.tagName) return false;
-        const escaped = String(output.tagName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(`<${escaped}(\\s[^>]*)?>`, 'i').test(text);
-    });
-    const hasJsonPatch = /<JSONPatch\b[\s\S]*?<\/JSONPatch>/i.test(text);
-    const hasCurrentStats = /<CurrentStats\b[\s\S]*?<\/CurrentStats>/i.test(text);
-    const hasGeneratedMenu = /<choices\b[\s\S]*?<\/choices>/i.test(text);
-
-    // QR / slash-generated setup messages often arrive already containing
-    // several structured blocks. Let QR, regex, and MVU consume them untouched.
-    return hasAuxManagedOutput && (hasJsonPatch || hasCurrentStats || hasGeneratedMenu);
-}
-
 function markExistingMessagesAsHandled(context = getContext()) {
     const chat = context?.chat;
     baselineChatLength = Array.isArray(chat) ? chat.length : 0;
     baselineMessageSignatures = new Map();
     processedMessageKeys = new Set();
+    clearPendingQrTimers();
     if (!Array.isArray(chat)) {
         return;
     }
@@ -124,6 +71,13 @@ function markExistingMessagesAsHandled(context = getContext()) {
     chat.forEach((message, index) => {
         baselineMessageSignatures.set(index, getMessageSignature(message));
     });
+}
+
+function clearPendingQrTimers() {
+    for (const timer of pendingQrTimers.values()) {
+        window.clearTimeout(timer);
+    }
+    pendingQrTimers = new Map();
 }
 
 function getMessageSignature(message) {
@@ -219,8 +173,72 @@ async function handleMessageReceived(eventData) {
         return;
     }
 
-    if (looksLikeSlashGeneratedUtilityMessage(message, preset)) {
-        debugLog(settings, 'MESSAGE_RECEIVED skipped: slash/QR utility message');
+    const classification = classifyReceivedMessage(message, preset);
+    if (classification.action === 'skip') {
+        debugLog(settings, `MESSAGE_RECEIVED skipped: ${classification.reason}`);
+        return;
+    }
+
+    if (classification.delayMs > 0) {
+        scheduleDelayedMessageProcessing(messageId, message, classification);
+        return;
+    }
+
+    await processReceivedMessage(messageId, message, preset, enabledOutputs, classification);
+}
+
+function scheduleDelayedMessageProcessing(messageId, message, classification) {
+    const settings = getSettings();
+    const processKey = getMessageProcessKey(messageId, message);
+    if (pendingQrTimers.has(processKey)) {
+        debugLog(settings, `MESSAGE_RECEIVED delayed processing already queued: ${classification.reason}, messageId=${messageId}`);
+        return;
+    }
+
+    debugLog(settings, `MESSAGE_RECEIVED delayed: ${classification.reason}, delayMs=${classification.delayMs}, messageId=${messageId}`);
+    const timer = window.setTimeout(async () => {
+        pendingQrTimers.delete(processKey);
+        const latestSettings = getSettings();
+        if (!latestSettings.enabled) return;
+
+        const context = getContext();
+        const chat = context?.chat;
+        const latestMessage = Array.isArray(chat) ? chat[messageId] : null;
+        if (shouldSkipReceivedMessage(latestMessage)) {
+            debugLog(latestSettings, `Delayed QR processing skipped: message disappeared or changed type, messageId=${messageId}`);
+            return;
+        }
+
+        const latestProcessKey = getMessageProcessKey(messageId, latestMessage);
+        if (processedMessageKeys.has(latestProcessKey)) {
+            debugLog(latestSettings, `Delayed QR processing skipped: already processed, messageId=${messageId}`);
+            return;
+        }
+
+        const preset = getActivePreset(latestSettings);
+        const enabledOutputs = getEnabledOutputs(preset);
+        if (enabledOutputs.length === 0) {
+            debugLog(latestSettings, 'Delayed QR processing skipped: no enabled outputs');
+            return;
+        }
+
+        const latestClassification = classifyReceivedMessage(latestMessage, preset);
+        if (latestClassification.action === 'skip') {
+            debugLog(latestSettings, `Delayed QR processing skipped: ${latestClassification.reason}`);
+            return;
+        }
+
+        await processReceivedMessage(messageId, latestMessage, preset, enabledOutputs, latestClassification);
+    }, classification.delayMs);
+    pendingQrTimers.set(processKey, timer);
+}
+
+async function processReceivedMessage(messageId, message, preset, enabledOutputs, classification = null) {
+    const settings = getSettings();
+    const context = getContext();
+    const processKey = getMessageProcessKey(messageId, message);
+    if (processedMessageKeys.has(processKey)) {
+        debugLog(settings, `MESSAGE_RECEIVED skipped: already processed, messageId=${messageId}`);
         return;
     }
 
@@ -330,6 +348,7 @@ async function handleMessageReceived(eventData) {
             removedFromMain: mainStrip.removed,
             incompleteRemovedFromMain: mainStrip.incompleteRemoved ?? [],
             replacementMode: failedOutputsAfterRetry.length === 0 ? 'success' : 'partial',
+            qrClassification: classification,
             appliedOutputs: parts.map(p => p.id),
             finalMessagePreview: message.mes.slice(0, 1000),
         });
@@ -367,6 +386,7 @@ async function handleMessageReceived(eventData) {
             removedFromMain: mainStrip.removed,
             incompleteRemovedFromMain: mainStrip.incompleteRemoved ?? [],
             replacementMode: 'fallback_original_main',
+            qrClassification: classification,
             finalMessagePreview: mainBefore.slice(0, 1000),
         });
 
@@ -596,6 +616,12 @@ function exposeDebugInterface() {
         },
 
         diagnoseTavernHelper: () => diagnoseTavernHelper(),
+
+        diagnoseQrMessage: (messageText) => {
+            const settings = getSettings();
+            const preset = PresetMgr.getActivePreset(settings);
+            return classifyReceivedMessage({ mes: String(messageText ?? '') }, preset);
+        },
 
         testSuppression: () => diagnoseSuppression(),
 

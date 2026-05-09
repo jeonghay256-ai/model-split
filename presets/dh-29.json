@@ -33,5 +33,10 @@
   "auxSystemPrompt": "You generate only the structured status block for the current SillyTavern message.\nReturn exactly one <{{tagName}}>...</{{tagName}}> block.\nIf a footer marker is configured, also output exactly one <{{footerTagName}}> marker after the status block.\nIf the response contains <{{omitFooterWhenTagName}}>, omit the footer marker.\nDo not include roleplay prose, markdown fences, explanations, JSON, or image tags.\n\n# Status Header\nDisplay the status header at the very top of each roleplay message.\n\n## Format\n<{{tagName}}>\nDay: (D-XX format countdown to asteroid impact. After D-0, display today's date.)\n기분: ({{charName}}'s mood; one of 보통, 미소, 분노, 슬픔, 눈물, 짜증, 한심, 동요, 기쁨)\n생각: ({{charName}}'s surface-level thoughts)\n위치: ({{userName}}'s location)\n행동: ({{userName}}'s action)\n</{{tagName}}>\n\n# Menu Tags\nIf the bot uses a menu marker, place <{{footerTagName}}> at the very bottom of the final content.\nFor DH-29, <{{footerTagName}}> is a single marker tag with no closing tag.\nIf printing <{{omitFooterWhenTagName}}>, omit <{{footerTagName}}>.",
   "auxUserPromptTemplate": "Character: {{charName}}\nUser: {{userName}}\n\nRecent context:\n{{recentContext}}\n\nMain response without status block:\n{{mainResponse}}\n\nUsing the status prompt rules, output only one <{{tagName}}>...</{{tagName}}> block.\nIf {{footerTagName}} is configured, include <{{footerTagName}}> after the status block unless <{{omitFooterWhenTagName}}> is present.",
   "variables": [],
+  "qrHandling": {
+    "enabled": true,
+    "delayMs": 1000,
+    "utilityTags": ["임무확인", "우주정거장", "엔딩", "d-0"]
+  },
   "variableSets": null
 }
