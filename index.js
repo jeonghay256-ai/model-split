@@ -522,10 +522,14 @@ function exposeDebugInterface() {
                 settings,
                 preset,
             });
+            const activeRole = PresetMgr.resolveActiveRole(settings, preset, getContext())
+                ?? prompts.currentVariables?.values?.role
+                ?? null;
             return {
-                activeRole: PresetMgr.resolveActiveRole(settings, preset, getContext()),
+                activeRole,
                 currentVariables: prompts.currentVariables,
                 ejsPreprocess: prompts.ejsPreprocess,
+                systemPromptPreview: prompts.systemPrompt.slice(0, 4000),
                 userPromptPreview: prompts.userPrompt.slice(0, 2000),
             };
         },
