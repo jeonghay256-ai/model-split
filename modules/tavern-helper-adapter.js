@@ -74,6 +74,18 @@ export function isTavernHelperAvailable() {
     return !!getTavernHelper() || typeof globalThis.getVariables === 'function';
 }
 
+export function isEjsTemplateAvailable() {
+    return typeof getEjsTemplate()?.evalTemplate === 'function';
+}
+
+export async function evalEjsTemplate(template) {
+    const ejsTemplate = getEjsTemplate();
+    if (typeof ejsTemplate?.evalTemplate !== 'function') {
+        throw new Error('EjsTemplate.evalTemplate is not available');
+    }
+    return await ejsTemplate.evalTemplate(String(template ?? ''));
+}
+
 export function getTavernHelperVariableTables() {
     const tables = {};
     for (const type of VARIABLE_TYPES) {

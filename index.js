@@ -182,7 +182,7 @@ async function handleMessageReceived(eventData) {
     try {
         // 1차 호출
         processedMessageKeys.add(processKey);
-        const prompts = buildAuxPrompt({ mainResponse: strippedMain, context, settings, preset });
+        const prompts = await buildAuxPrompt({ mainResponse: strippedMain, context, settings, preset });
         promptsForLog = prompts;
 
         debugLog(settings, 'Aux call (1st) starting');
@@ -513,10 +513,10 @@ function exposeDebugInterface() {
             return result;
         },
 
-        diagnoseCurrentVariables: () => {
+        diagnoseCurrentVariables: async () => {
             const settings = getSettings();
             const preset = PresetMgr.getActivePreset(settings);
-            const prompts = buildAuxPrompt({
+            const prompts = await buildAuxPrompt({
                 mainResponse: '(diagnostic main response)',
                 context: getContext(),
                 settings,
@@ -525,6 +525,7 @@ function exposeDebugInterface() {
             return {
                 activeRole: PresetMgr.resolveActiveRole(settings, preset, getContext()),
                 currentVariables: prompts.currentVariables,
+                ejsPreprocess: prompts.ejsPreprocess,
                 userPromptPreview: prompts.userPrompt.slice(0, 2000),
             };
         },

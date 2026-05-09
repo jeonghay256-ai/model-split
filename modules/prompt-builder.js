@@ -10,6 +10,7 @@ import {
     formatCurrentVariablesBlock,
     injectCurrentVariablesIntoUserPrompt,
 } from './variable-context.js';
+import { preprocessPromptTemplates } from './ejs-preprocessor.js';
 
 function getCharacterName(context) {
     const characterId = context?.characterId;
@@ -48,7 +49,7 @@ function buildOutputsList(preset) {
     }).join('\n');
 }
 
-export function buildAuxPrompt({ mainResponse, context, settings, preset }) {
+export async function buildAuxPrompt({ mainResponse, context, settings, preset }) {
     const charName = getCharacterName(context);
     const userName = getUserName(context);
     const recentContext = formatRecentContext(context, settings.contextTurns) || '(none)';
@@ -86,14 +87,21 @@ export function buildAuxPrompt({ mainResponse, context, settings, preset }) {
         currentVariableContext: currentVariablesBlock,
     };
 
-    const systemPrompt = applyTemplate(buildPromptSectionsText(preset, activeRole || ''), variables);
-    let userPrompt = applyTemplate(preset.auxUserPromptTemplate, variables);
+    const rawSystemTemplate = buildPromptSectionsText(preset, activeRole || '');
+    const rawUserTemplate = preset.auxUserPromptTemplate;
+    const preprocessed = await preprocessPromptTemplates({
+        systemTemplate: rawSystemTemplate,
+        userTemplate: rawUserTemplate,
+    });
+
+    const systemPrompt = applyTemplate(preprocessed.systemTemplate, variables);
+    let userPrompt = applyTemplate(preprocessed.userTemplate, variables);
     if (!String(preset.auxUserPromptTemplate || '').includes('{{currentVariables')
         && !String(preset.auxUserPromptTemplate || '').includes('{{currentVariableContext')) {
         userPrompt = injectCurrentVariablesIntoUserPrompt(userPrompt, currentVariablesBlock);
     }
 
-    return { systemPrompt, userPrompt, currentVariables };
+    return { systemPrompt, userPrompt, currentVariables, ejsPreprocess: preprocessed.metadata };
 }
 
 /**
