@@ -56,6 +56,62 @@ function shouldSkipReceivedMessage(message) {
     return false;
 }
 
+function looksLikeSlashGeneratedUtilityMessage(message, preset) {
+    const text = String(message?.mes ?? '');
+    if (!text) return false;
+
+    const utilityTags = [
+        'CASTE_EVAL',
+        'Button',
+        'NOTICE_BOARD',
+        'FB',
+        'USER_POST',
+        'POLL_BOARD',
+        'USER_POLL',
+        'STREAM_BOARD',
+        'USER_STREAM',
+        'RK_AB',
+        'RK_GD',
+        'TALENT_BOARD',
+        'USER_TALENT',
+        'TALENT_ACCEPTED',
+        'MENTEE_LIST',
+        'MENTOR_MATCH',
+        'MENTEE_APP',
+        'MENTOR_REPORT',
+        'EDEN_LIFE',
+        'USER_EDENLIFE_POST',
+        'EDEN_LIFE_PROFILE',
+        'EDEN_RADIO',
+        'SV_VIEW',
+        'SV_WRITE',
+        'PHONE_UI',
+        'APP_NOTIF',
+        'character_profile',
+        'world',
+    ];
+
+    const hasUtilityTag = utilityTags.some((tag) => {
+        const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`<${escaped}(\\s[^>]*)?>`, 'i').test(text);
+    });
+    if (hasUtilityTag) return true;
+
+    const enabledOutputs = getEnabledOutputs(preset);
+    const hasAuxManagedOutput = enabledOutputs.some((output) => {
+        if (!output?.tagName) return false;
+        const escaped = String(output.tagName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`<${escaped}(\\s[^>]*)?>`, 'i').test(text);
+    });
+    const hasJsonPatch = /<JSONPatch\b[\s\S]*?<\/JSONPatch>/i.test(text);
+    const hasCurrentStats = /<CurrentStats\b[\s\S]*?<\/CurrentStats>/i.test(text);
+    const hasGeneratedMenu = /<choices\b[\s\S]*?<\/choices>/i.test(text);
+
+    // QR / slash-generated setup messages often arrive already containing
+    // several structured blocks. Let QR, regex, and MVU consume them untouched.
+    return hasAuxManagedOutput && (hasJsonPatch || hasCurrentStats || hasGeneratedMenu);
+}
+
 function markExistingMessagesAsHandled(context = getContext()) {
     const chat = context?.chat;
     baselineChatLength = Array.isArray(chat) ? chat.length : 0;
@@ -160,6 +216,11 @@ async function handleMessageReceived(eventData) {
     const enabledOutputs = getEnabledOutputs(preset);
     if (enabledOutputs.length === 0) {
         debugLog(settings, 'Aux call skipped: no enabled outputs');
+        return;
+    }
+
+    if (looksLikeSlashGeneratedUtilityMessage(message, preset)) {
+        debugLog(settings, 'MESSAGE_RECEIVED skipped: slash/QR utility message');
         return;
     }
 
